@@ -13,10 +13,17 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
 /* prevent redefinition; we don't need it anymore anyway */
 #undef APIENTRY
 
 #include <windows.h>
+
+#undef far
+#undef near
 
 /* https://www.opengl.org/wiki/Load_OpenGL_Functions */
 
