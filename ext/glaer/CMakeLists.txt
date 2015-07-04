@@ -7,9 +7,6 @@ find_package(OpenGL REQUIRED)
 # python2 is required to generate GLAER source files
 find_package(PythonInterp 2.7 REQUIRED)
 
-# default to building static lib
-option(BUILD_SHARED_LIBS "Build GLAER as a shared library (DLL)" OFF)
-
 # generator; allow user to override
 if(MSVC_IDE)
 	set(GLAER_GENERATOR "Visual Studio" CACHE STRING "GLAER generator")
@@ -67,17 +64,15 @@ endif()
 # shared library only
 if(BUILD_SHARED_LIBS)
 	# define macro for building DLL
-	add_definitions(-DGLAER_BUILD_DLL)
-	# export macro for importing DLL
-	list(APPEND GLAER_DEFINITIONS_impl -DGLAER_DLL)
-	target_link_libraries(glaer ${GLAER_LIBRARIES_impl})
-	# can link libs here, so don't export
-	set(GLAER_DEFINITIONS_impl)
+	target_compile_definitions(glaer PRIVATE GLAER_BUILD_DLL)
+	target_compile_definitions(glaer INTERFACE GLAER_DLL)
 endif()
 
-# export required definitions and libraries
-set(GLAER_LIBRARIES ${GLAER_LIBRARIES_impl} CACHE STRING "GLAER required libraries" FORCE)
-set(GLAER_DEFINITIONS ${GLAER_DEFINITIONS_impl} CACHE STRING "GLAER required definitions" FORCE)
+# usage requirements
+target_link_libraries(glaer PUBLIC ${GLAER_LIBRARIES_impl})
+target_include_directories(glaer INTERFACE
+	"$<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/src/include>"
+)
 
 
 
