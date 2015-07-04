@@ -87,8 +87,12 @@ if (BUILD_SHARED_LIBS)
                               INSTALL_NAME_DIR "${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX}")
     endif()
 
-    target_link_libraries(glfw ${glfw_LIBRARIES})
 endif()
+
+target_link_libraries(glfw PUBLIC ${glfw_LIBRARIES})
+target_include_directories(glfw INTERFACE
+	"$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>"
+)
 
 if (GLFW_INSTALL)
     install(TARGETS glfw EXPORT glfwTargets DESTINATION lib${LIB_SUFFIX})
