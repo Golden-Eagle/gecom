@@ -1,0 +1,7 @@
+
+# build folders
+/build/*
+/test/build/*
+
+# compiled python
+*.pyc
