@@ -20,5 +20,5 @@ add_subdirectory(src/gecom)
 set_property(TARGET gecom PROPERTY FOLDER "GECOM")
 
 # test exe target
-add_subdirectory(src/main)
-set_property(TARGET main PROPERTY FOLDER "GECOM")
+add_subdirectory(src/gecom_main)
+set_property(TARGET gecom_main PROPERTY FOLDER "GECOM")
