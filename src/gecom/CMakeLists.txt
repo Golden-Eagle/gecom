@@ -27,6 +27,7 @@ add_library(gecom ${headers} ${sources})
 target_link_libraries(gecom PUBLIC glfw glaer)
 
 # Include usage requirements
+# TODO this isn't very nice
 target_include_directories(gecom INTERFACE
 	"$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/..>"
 )

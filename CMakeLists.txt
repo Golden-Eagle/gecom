@@ -1,4 +1,7 @@
-cmake_minimum_required(VERSION 3.0.0)
+
+# require new behaviour of:
+# CMP0054 (don't dereference quoted variables in if() args)
+cmake_minimum_required(VERSION 3.1)
 
 project("GECOM" CXX C)
 
