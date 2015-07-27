@@ -1,4 +1,5 @@
 
+#include "Section.hpp"
 #include "Log.hpp"
 
 #ifdef _WIN32
@@ -46,11 +47,11 @@ namespace gecom {
 
 			void checkConsoleDefaultsSaved() {
 				// save the original values for reset
-				if (csbi_out == nullptr) {
+				if (!csbi_out) {
 					csbi_out = new CONSOLE_SCREEN_BUFFER_INFO;
 					GetConsoleScreenBufferInfo(hstdout, csbi_out);
 				}
-				if (csbi_err == nullptr) {
+				if (!csbi_err) {
 					csbi_err = new CONSOLE_SCREEN_BUFFER_INFO;
 					GetConsoleScreenBufferInfo(hstderr, csbi_err);
 				}
@@ -61,7 +62,7 @@ namespace gecom {
 				if (&o == &std::cout) {
 					SetConsoleTextAttribute(hstdout, csbi_out->wAttributes);
 				}
-				if (&o == &std::cerr) {
+				if (&o == &std::cerr || &o == &std::clog) {
 					SetConsoleTextAttribute(hstderr, csbi_err->wAttributes);
 				}
 			}
@@ -77,7 +78,7 @@ namespace gecom {
 					w = (csbi.wAttributes & 0xF0) | w;
 					SetConsoleTextAttribute(hstdout, w);
 				}
-				if (&o == &std::cerr) {
+				if (&o == &std::cerr || &o == &std::clog) {
 					w = w & 0x0F;
 					CONSOLE_SCREEN_BUFFER_INFO csbi;
 					GetConsoleScreenBufferInfo(hstderr, &csbi);
@@ -117,7 +118,7 @@ namespace gecom {
 		namespace {
 
 			void setTextAttribute(std::ostream &o, const char *attrib) {
-				if (&o == &std::cout || &o == &std::cerr) {
+				if (&o == &std::cout || &o == &std::cerr || &o == &std::clog) {
 					// only allow escape codes going to stdout/stderr
 					o << attrib;
 				}
@@ -177,6 +178,7 @@ namespace gecom {
 
 		if (msg.find_first_of("\r\n") != std::string::npos || msg.length() > 50) {
 			// message contains a CR or LF or is longer than 50 characters, start on a new line
+			// TODO -> log output?
 			ss << std::endl;
 		}
 

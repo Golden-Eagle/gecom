@@ -10,12 +10,13 @@
 #include <chrono>
 #include <ctime>
 #include <mutex>
+#include <stdexcept>
 
 namespace gecom {
 
 	namespace termcolor {
 
-		// Terminal Color Manipulators (use these like std::endl on std::cout and std::cerr)
+		// Terminal Color Manipulators (use these like std::endl on std::cout/cerr/clog)
 
 		// Reset Color
 		std::ostream & reset(std::ostream &);
@@ -44,14 +45,14 @@ namespace gecom {
 
 	class LogOutput {
 	private:
-		LogOutput(const LogOutput &rhs) = delete;
-		LogOutput & operator=(const LogOutput &rhs) = delete;
+		LogOutput(const LogOutput &) = delete;
+		LogOutput & operator=(const LogOutput &) = delete;
 		
 		unsigned m_verbosity = 2;
 		bool m_mute = false;
 
 	protected:
-		// this is responsible for newlines
+		// this is responsible for trailing newlines
 		virtual void write_impl(unsigned verbosity, unsigned type, const std::string &hdr, const std::string &msg) = 0;
 
 	public:
@@ -139,7 +140,7 @@ namespace gecom {
 		explicit StreamLogOutput(std::ostream *out_, bool mute_ = false) : LogOutput(mute_), m_out(out_) { }
 	};
 
-	// log output for writing to std::cout or std::cerr (as they are the only streams with reliable color support)
+	// log output for writing to std::cout/cerr/clog (as they are the only streams with reliable color support)
 	class ColoredStreamLogOutput : public StreamLogOutput {
 	protected:
 		virtual void write_impl(unsigned verbosity, unsigned type, const std::string &hdr, const std::string &msg) override {
@@ -181,12 +182,15 @@ namespace gecom {
 	public:
 		explicit FileLogOutput(
 			const std::string &fname_,
-			std::ios_base::openmode mode_ = std::ios_base::trunc,
+			std::ios_base::openmode mode_ = std::ios::trunc,
 			bool mute_ = false
 		) :
 			StreamLogOutput(&m_out, mute_)
 		{
 			m_out.open(fname_, mode_);
+			if (!m_out.is_open()) {
+				throw std::runtime_error("unable to open file");
+			}
 		}
 	};
 	

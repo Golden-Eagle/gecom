@@ -11,6 +11,8 @@ set(headers
 	"Shader.hpp"
 	"SimpleShader.hpp"
 	"Window.hpp"
+	"Section.hpp"
+	"Profiler.hpp"
 )
 
 # list .cpp
@@ -19,6 +21,7 @@ set(sources
 	"Log.cpp"
 	"Perlin.cpp"
 	"Window.cpp"
+	"Section.cpp"
 )
 
 add_library(gecom ${headers} ${sources})
