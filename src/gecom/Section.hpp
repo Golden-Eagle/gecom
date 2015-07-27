@@ -53,9 +53,9 @@ namespace gecom {
 		}
 
 		const Section * root() const noexcept {
-			const Section *r = parent();
-			while (r) {
-				r = r->parent();
+			const Section *r = this;
+			while (const Section *p = r->parent()) {
+				r = p;
 			}
 			return r;
 		}
