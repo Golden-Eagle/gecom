@@ -8,9 +8,11 @@
 #include <fstream>
 #include <unordered_set>
 #include <chrono>
-#include <ctime>
 #include <mutex>
 #include <stdexcept>
+#include <utility>
+
+#include "Section.hpp"
 
 namespace gecom {
 
@@ -43,19 +45,28 @@ namespace gecom {
 
 	}
 
+	enum class loglevel {
+		info, warning, error, critical
+	};
+
+	template <typename CharT>
+	class basic_logstream;
+	
+	using logstream = basic_logstream<char>;
+
 	class LogOutput {
 	private:
-		LogOutput(const LogOutput &) = delete;
-		LogOutput & operator=(const LogOutput &) = delete;
-		
-		unsigned m_verbosity = 2;
+		unsigned m_verbosity = 9001;
 		bool m_mute = false;
 
 	protected:
 		// this is responsible for trailing newlines
-		virtual void write_impl(unsigned verbosity, unsigned type, const std::string &hdr, const std::string &msg) = 0;
+		virtual void write_impl(unsigned verbosity, loglevel level, const std::string &hdr, const std::string &msg) = 0;
 
 	public:
+		LogOutput(const LogOutput &) = delete;
+		LogOutput & operator=(const LogOutput &) = delete;
+
 		LogOutput(bool mute_ = false) : m_mute(mute_) { }
 
 		unsigned verbosity() {
@@ -74,51 +85,11 @@ namespace gecom {
 			m_mute = b;
 		}
 
-		void write(unsigned verbosity, unsigned type, const std::string &hdr, const std::string &msg) {
-			if (!m_mute && verbosity <= m_verbosity) write_impl(verbosity, type, hdr, msg);
+		void write(unsigned verbosity, loglevel level, const std::string &hdr, const std::string &msg) {
+			if (!m_mute && verbosity < m_verbosity) write_impl(verbosity, level, hdr, msg);
 		}
 
 		virtual ~LogOutput() { }
-
-	};
-
-	class Log {
-	private:
-		Log() = delete;
-		Log(const Log &rhs) = delete;
-		Log & operator=(const Log &rhs) = delete;
-
-		static std::mutex m_mutex;
-		static std::unordered_set<LogOutput *> m_outputs;
-
-		// cout starts muted, cerr starts non-muted
-		static LogOutput * const m_cout;
-		static LogOutput * const m_cerr;
-
-	public:
-		static const unsigned information = 0;
-		static const unsigned warning = 1;
-		static const unsigned error = 2;
-
-		static void write(unsigned verbosity, unsigned type, const std::string &source, const std::string &msg);
-
-		static void addOutput(LogOutput &out) {
-			std::lock_guard<std::mutex> lock(m_mutex);
-			m_outputs.insert(&out);
-		}
-
-		static void removeOutput(LogOutput &out) {
-			std::lock_guard<std::mutex> lock(m_mutex);
-			m_outputs.erase(&out);
-		}
-
-		static LogOutput & stdOut() {
-			return *m_cout;
-		}
-
-		static LogOutput & stdErr() {
-			return *m_cerr;
-		}
 
 	};
 
@@ -128,7 +99,7 @@ namespace gecom {
 		std::ostream *m_out;
 
 	protected:
-		virtual void write_impl(unsigned, unsigned, const std::string &hdr, const std::string &msg) override {
+		virtual void write_impl(unsigned, loglevel, const std::string &hdr, const std::string &msg) override {
 			(*m_out) << hdr << msg << std::endl;
 		}
 
@@ -143,23 +114,23 @@ namespace gecom {
 	// log output for writing to std::cout/cerr/clog (as they are the only streams with reliable color support)
 	class ColoredStreamLogOutput : public StreamLogOutput {
 	protected:
-		virtual void write_impl(unsigned verbosity, unsigned type, const std::string &hdr, const std::string &msg) override {
+		virtual void write_impl(unsigned verbosity, loglevel level, const std::string &hdr, const std::string &msg) override {
 			std::ostream &out = stream();
 			using namespace std;
-			if (verbosity == 0) {
-				switch (type) {
-				case Log::warning:
+			if (verbosity < 2) {
+				switch (level) {
+				case loglevel::warning:
 					out << termcolor::boldYellow; break;
-				case Log::error:
+				case loglevel::error:
 					out << termcolor::boldRed; break;
 				default:
 					out << termcolor::boldGreen;
 				}
 			} else {
-				switch (type) {
-				case Log::warning:
+				switch (level) {
+				case loglevel::warning:
 					out << termcolor::yellow; break;
-				case Log::error:
+				case loglevel::error:
 					out << termcolor::red; break;
 				default:
 					out << termcolor::green;
@@ -193,57 +164,114 @@ namespace gecom {
 			}
 		}
 	};
+
+	class Log {
+	private:
+		Log() = delete;
+		Log(const Log &) = delete;
+		Log & operator=(const Log &) = delete;
+
+		static std::mutex m_mutex;
+		static std::unordered_set<LogOutput *> m_outputs;
+
+		// stdout starts muted, stderr starts non-muted
+		static ColoredStreamLogOutput m_stdout;
+		static ColoredStreamLogOutput m_stderr;
+
+	public:
+		static constexpr unsigned defaultVerbosity(loglevel l) {
+			return l == loglevel::critical ? 0 : (l == loglevel::error ? 1 : (l == loglevel::warning ? 2 : 3));
+		}
+		
+		static void write(unsigned verbosity, loglevel level, const std::string &source, const std::string &msg);
+
+		static void addOutput(LogOutput *out) {
+			std::unique_lock<std::mutex> lock(m_mutex);
+			m_outputs.insert(out);
+		}
+
+		static void removeOutput(LogOutput *out) {
+			std::unique_lock<std::mutex> lock(m_mutex);
+			m_outputs.erase(out);
+		}
+
+		static LogOutput & stdOut() {
+			return m_stdout;
+		}
+
+		static LogOutput & stdErr() {
+			return m_stderr;
+		}
+
+		static logstream info(const std::string &source = "");
+
+		static logstream warning(const std::string &source = "");
+
+		static logstream error(const std::string &source = "");
+
+		static logstream critical(const std::string &source = "");
+
+	};
 	
 	template <typename CharT>
 	class basic_logstream : public std::basic_ostream<CharT> {
 	private:
 		unsigned m_verbosity;
-		unsigned m_type;
+		loglevel m_level;
 		std::string m_source;
 		std::basic_stringbuf<CharT> m_buf;
 		bool m_write;
 
-		basic_logstream(const basic_logstream &rhs) = delete;
-		basic_logstream & operator=(const basic_logstream &rhs) = delete;
-
 	public:
-		// main ctor; sets type to Log::information and verbosity to 2
-		basic_logstream(const std::string &source_) :
+		basic_logstream(const basic_logstream &) = delete;
+		basic_logstream & operator=(const basic_logstream &) = delete;
+
+		// ctor; sets level to loglevel::info and verbosity to 3
+		basic_logstream(std::string source_) :
 			std::basic_ostream<CharT>(&m_buf),
-			m_verbosity(2),
-			m_type(Log::information),
-			m_source(source_),
+			m_verbosity(3),
+			m_level(loglevel::info),
+			m_source(std::move(source_)),
 			m_write(true)
 		{ }
 
 		// move ctor; takes over responsibility for writing to log
-		basic_logstream(basic_logstream &&rhs) :
-			m_verbosity(rhs.m_verbosity),
-			m_type(rhs.m_type),
-			m_source(rhs.m_source),
-			m_buf(rhs.m_buf.str()),
-			m_write(rhs.m_write)
+		basic_logstream(basic_logstream &&other) :
+			std::basic_ostream<CharT>(&m_buf),
+			m_verbosity(other.m_verbosity),
+			m_level(other.m_level),
+			m_source(std::move(other.m_source)),
+			m_write(other.m_write)
 		{
-			rhs.m_write = false;
+			other.m_write = false;
+			using std::swap;
+			swap(m_buf, other.m_buf);
 		}
 
-		// set type to Log::information and default verbosity to 2
-		basic_logstream & information(unsigned v = 2) {
-			m_type = Log::information;
+		// set level to loglevel::info and verbosity to default by default
+		basic_logstream & info(unsigned v = Log::defaultVerbosity(loglevel::info)) {
+			m_level = loglevel::info;
 			m_verbosity = v;
 			return *this;
 		}
 
-		// set type to Log::warning and default verbosity to 1
-		basic_logstream & warning(unsigned v = 1) {
-			m_type = Log::warning;
+		// set level to loglevel::warning and verbosity to default by default
+		basic_logstream & warning(unsigned v = Log::defaultVerbosity(loglevel::warning)) {
+			m_level = loglevel::warning;
 			m_verbosity = v;
 			return *this;
 		}
 
-		// set type to Log::error and default verbosity to 0
-		basic_logstream & error(unsigned v = 0) {
-			m_type = Log::error;
+		// set level to loglevel::error and verbosity to default by default
+		basic_logstream & error(unsigned v = Log::defaultVerbosity(loglevel::error)) {
+			m_level = loglevel::error;
+			m_verbosity = v;
+			return *this;
+		}
+
+		// set level to loglevel::critical and verbosity to default by default
+		basic_logstream & critical(unsigned v = Log::defaultVerbosity(loglevel::critical)) {
+			m_level = loglevel::critical;
 			m_verbosity = v;
 			return *this;
 		}
@@ -256,20 +284,15 @@ namespace gecom {
 
 		~basic_logstream() {
 			if (m_write) {
-				Log::write(m_verbosity, m_type, m_source, m_buf.str());
+				Log::write(m_verbosity, m_level, m_source, m_buf.str());
 			}
 		}
 
 	};
-	
-	using logstream = basic_logstream<char>;
 
-	inline logstream log(const std::string &source) {
-		return logstream(source);
-	}
-
-	inline logstream log() {
-		return logstream("Global");
+	// TODO remove this
+	inline logstream log(const std::string &source = "Global") {
+		return Log::info(source);
 	}
 
 }

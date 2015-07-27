@@ -1,9 +1,11 @@
 
 #include <gecom/Window.hpp>
+#include <gecom/Log.hpp>
 
 using namespace gecom;
 
 int main() {
+	Section sec("mainthread");
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).visible(true);
 

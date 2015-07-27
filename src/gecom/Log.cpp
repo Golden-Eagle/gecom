@@ -154,16 +154,37 @@ namespace gecom {
 
 	std::unordered_set<LogOutput *> Log::m_outputs;
 	std::mutex Log::m_mutex;
-	LogOutput * const Log::m_cout = new ColoredStreamLogOutput(&std::cout, true);
-	LogOutput * const Log::m_cerr = new ColoredStreamLogOutput(&std::cerr, false);
 
-	void Log::write(unsigned verbosity, unsigned type, const std::string &source, const std::string &msg) {
+	ColoredStreamLogOutput Log::m_stdout(&std::cout, true);
+	ColoredStreamLogOutput Log::m_stderr(&std::cerr, false);
+
+	void Log::write(unsigned verbosity, loglevel level, const std::string &source, const std::string &msg) {
 		// better format maybe?
 		// Wed May 30 12:25:03 2012 [System] Error : IT BROEK
-		std::lock_guard<std::mutex> lock(m_mutex);
 
-		static const char *typestr[] = { "Information", "Warning", "Error", "???" };
-		type = type < 3 ? type : 3;
+		// TODO:
+		// 2015-07-28 02:20:42.123 | 0>    Error [mainthread/gameloop/draw/terrain/GL:API] : Invalid Operation
+
+		std::unique_lock<std::mutex> lock(m_mutex);
+
+		static const char *levelstr;
+		switch (level) {
+		case loglevel::info:
+			levelstr = "Information";
+			break;
+		case loglevel::warning:
+			levelstr = "Warning";
+			break;
+		case loglevel::error:
+			levelstr = "Error";
+			break;
+		case loglevel::critical:
+			levelstr = "Critical";
+			break;
+		default:
+			levelstr = "???";
+			break;
+		}
 
 		std::time_t tt = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 
@@ -174,7 +195,7 @@ namespace gecom {
 		std::ostringstream ss;
 		ss << ts;
 		ss << " [" << std::setw(15) << source << "] ";
-		ss << std::setw(11) << typestr[type] << " : ";
+		ss << std::setw(11) << levelstr << " : ";
 
 		if (msg.find_first_of("\r\n") != std::string::npos || msg.length() > 50) {
 			// message contains a CR or LF or is longer than 50 characters, start on a new line
@@ -183,14 +204,38 @@ namespace gecom {
 		}
 
 		// write to stderr and stdout
-		m_cerr->write(verbosity, type, ss.str(), msg);
-		m_cout->write(verbosity, type, ss.str(), msg);
+		m_stderr.write(verbosity, level, ss.str(), msg);
+		m_stdout.write(verbosity, level, ss.str(), msg);
 
 		// write to all others
 		for (LogOutput *out : m_outputs) {
-			out->write(verbosity, type, ss.str(), msg);
+			out->write(verbosity, level, ss.str(), msg);
 		}
 		
+	}
+
+	logstream Log::info(const std::string &source) {
+		std::string fullsource = "???";
+		if (const Section *sec = Section::current()) {
+			fullsource = sec->path();
+		}
+		if (!source.empty()) {
+			fullsource += '/';
+			fullsource += source;
+		}
+		return logstream(fullsource);
+	}
+
+	logstream Log::warning(const std::string &source) {
+		return std::move(info().warning());
+	}
+
+	logstream Log::error(const std::string &source) {
+		return std::move(info().error());
+	}
+
+	logstream Log::critical(const std::string &source) {
+		return std::move(info().critical());
 	}
 
 }

@@ -187,7 +187,7 @@ namespace gecom {
 				// set GLAER callbacks here too, but don't init anything yet
 				glaerSetErrorCallback(callbackErrorGLAER);
 				glaerSetCurrentContextProvider(getCurrentGlaerContext);
-				gecom::log("Window").information(0) << "GLFW initialized";
+				gecom::log("Window").info(0) << "GLFW initialized";
 				done = true;
 			}
 		}
@@ -442,7 +442,7 @@ namespace gecom {
 			}
 			//gecom::log("Window") << "GL Error: " << gluErrorString(gl_err);
 			gecom::log("Window") << "GL version string: " << glGetString(GL_VERSION);
-			gecom::log("Window").information(0) << "GLAER initialized";
+			gecom::log("Window").info(0) << "GLAER initialized";
 			wd->init_done = true;
 			// enable GL_ARB_debug_output if available
 			if (glfwExtensionSupported("GL_ARB_debug_output")) {
@@ -488,9 +488,9 @@ namespace gecom {
 
 	// this should only be called from the main thread
 	create_window_args::operator Window * () {
-		gecom::log("Window").information(0) << "Creating window... [title=" << m_title << "]";
+		gecom::log("Window").info(0) << "Creating window... [title=" << m_title << "]";
 		if (m_hints[GLFW_OPENGL_DEBUG_CONTEXT]) {
-			log("Window").information(0) << "Requesting debug GL context";
+			log("Window").info(0) << "Requesting debug GL context";
 		}
 		init_glfw();
 		glfwDefaultWindowHints();
@@ -505,7 +505,7 @@ namespace gecom {
 			gecom::log("Window").error() << "GLFW window creation failed";
 			throw window_error("GLFW window creation failed");
 		}
-		gecom::log("Window").information(0) << "Window created";
+		gecom::log("Window").info(0) << "Window created";
 		return new Window(handle, m_share);
 	}
 

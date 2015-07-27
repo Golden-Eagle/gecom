@@ -28,9 +28,7 @@ namespace gecom {
 
 	public:
 		Section(const Section &) = delete;
-		Section(Section &&) = delete;
 		Section & operator=(const Section &) = delete;
-		Section & operator=(Section &&) = delete;
 
 		Section(std::string name_) {
 			enter(std::move(name_));

@@ -383,10 +383,10 @@ namespace gecom {
 		// must be called from the main thread.
 		static inline void start() {
 			if (!m_started) {
-				log("AsyncExec").information(0) << "Starting...";
+				log("AsyncExec").info(0) << "Starting...";
 				m_main_id = std::this_thread::get_id();
 				m_fast_thread = std::thread([] {
-					log("AsyncExec:fast").information(0) << "Background thread started";
+					log("AsyncExec:fast").info(0) << "Background thread started";
 					while (true) {
 						task_t task;
 						try {
@@ -406,7 +406,7 @@ namespace gecom {
 					}
 				});
 				m_slow_thread = std::thread([] {
-					log("AsyncExec:slow").information(0) << "Background thread started";
+					log("AsyncExec:slow").info(0) << "Background thread started";
 					while (true) {
 						task_t task;
 						try {
@@ -435,7 +435,7 @@ namespace gecom {
 		// https://connect.microsoft.com/VisualStudio/feedback/details/747145/std-thread-join-hangs-if-called-after-main-exits-when-using-vs2012-rc
 		static inline void stop() {
 			if (m_started) {
-				log("AsyncExec").information(0) << "Stopping background threads...";
+				log("AsyncExec").info(0) << "Stopping background threads...";
 				// give the last log message time to show up
 				std::this_thread::sleep_for(std::chrono::milliseconds(10));
 				InterruptManager::interrupt(m_fast_thread.get_id());
