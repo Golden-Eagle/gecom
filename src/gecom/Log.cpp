@@ -1,11 +1,35 @@
 
-#include "Section.hpp"
-#include "Log.hpp"
-
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
+
+// Are we posix?
+#ifdef __posix
+#include <unistd.h>
+#include <time.h>
+// Posix defines gmtime_r(), which is threadsafe
+#define GECOM_HAVE_GMTIME_R
+// Posix defines getpid()
+#define GECOM_HAVE_GETPID
+#endif
+
+// is our gmtime() threadsafe?
+#if defined(_MSC_VER) || defined(__MINGW32__) || defined(__MINGW64__)
+// MSVC stdlib uses TLS; is a DLL so must be threadsafe
+// MinGW implements gmtime_r() as a macro around gmtime(), so gmtime() must be threadsafe
+#define GECOM_GMTIME_THREADSAFE
+#endif
+
+#if !(defined(GECOM_GMTIME_THREADSAFE) || defined(GECOM_HAVE_GMTIME_R))
+#error unable to find threadsafe gmtime() or alternative
+#endif
+
+#include <ctime>
+#include <thread>
+
+#include "Section.hpp"
+#include "Log.hpp"
 
 namespace gecom {
 
@@ -152,78 +176,90 @@ namespace gecom {
 
 	}
 
+	namespace {
+		auto processID() {
+#ifdef _WIN32
+			return GetCurrentProcessId();
+#elif defined(GECOM_HAVE_GETPID)
+			return uintmax_t(getpid());
+#else
+			return "???";
+#endif
+		}
+	}
+
 	std::unordered_set<LogOutput *> Log::m_outputs;
 	std::mutex Log::m_mutex;
 
-	ColoredStreamLogOutput Log::m_stdout(&std::cout, true);
-	ColoredStreamLogOutput Log::m_stderr(&std::cerr, false);
+	ConsoleLogOutput Log::m_stdout(&std::cout, true);
+	ConsoleLogOutput Log::m_stderr(&std::clog, false);
 
-	void Log::write(unsigned verbosity, loglevel level, const std::string &source, const std::string &msg) {
-		// better format maybe?
-		// Wed May 30 12:25:03 2012 [System] Error : IT BROEK
-
-		// TODO:
-		// 2015-07-28 02:20:42.123 | 0>    Error [mainthread/gameloop/draw/terrain/GL:API] : Invalid Operation
-
+	void Log::write(unsigned verbosity, loglevel level, const std::string &source, const std::string &body) {
 		std::unique_lock<std::mutex> lock(m_mutex);
 
-		static const char *levelstr;
-		switch (level) {
-		case loglevel::info:
-			levelstr = "Information";
-			break;
-		case loglevel::warning:
-			levelstr = "Warning";
-			break;
-		case loglevel::error:
-			levelstr = "Error";
-			break;
-		case loglevel::critical:
-			levelstr = "Critical";
-			break;
-		default:
-			levelstr = "???";
-			break;
-		}
+		using namespace std::chrono;
 
-		std::time_t tt = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+		// truncate to seconds, use difference for second-fraction part of timestamp
+		auto t1 = system_clock::now();
+		auto t0 = time_point_cast<seconds>(t1);
+		std::time_t tt = std::chrono::system_clock::to_time_t(t0);
+		
+		// who the fuck thought tm was a good struct name?
+		std::tm *t = nullptr;
 
-		std::string ts = std::string(ctime(&tt));
-		ts.pop_back();
+		// why is this shit so terrible? WHY?
+#ifdef GECOM_HAVE_GMTIME_R
+		std::tm bullshit;
+		t = &bullshit;
+		gmtime_r(&tt, t);
+#else
+		t = std::gmtime(&tt);
+#endif
+		
+		// format time: https://www.ietf.org/rfc/rfc3339.txt
+		// 2015-07-29T12:43:15.123Z
+		// we always use 3 digit second-fraction
+		std::ostringstream timess;
+		timess << std::setfill('0');
+		timess << std::setw(4) << (1900 + t->tm_year) << '-';
+		timess << std::setw(2) << (1 + t->tm_mon) << '-';
+		timess << std::setw(2) << t->tm_mday << 'T';
+		timess << std::setw(2) << t->tm_hour << ':';
+		timess << std::setw(2) << t->tm_min << ':';
+		timess << std::setw(2) << t->tm_sec << '.';
+		timess << std::setw(3) << duration_cast<milliseconds>(t1 - t0).count() << 'Z';
 
-		// prepare the header
-		std::ostringstream ss;
-		ss << ts;
-		ss << " [" << std::setw(15) << source << "] ";
-		ss << std::setw(11) << levelstr << " : ";
-
-		if (msg.find_first_of("\r\n") != std::string::npos || msg.length() > 50) {
-			// message contains a CR or LF or is longer than 50 characters, start on a new line
-			// TODO -> log output?
-			ss << std::endl;
-		}
+		// prepare the message
+		logmessage msg;
+		msg.time = timess.str();
+		msg.level = level;
+		msg.verbosity = verbosity;
+		msg.source = source;
+		msg.body = body;
 
 		// write to stderr and stdout
-		m_stderr.write(verbosity, level, ss.str(), msg);
-		m_stdout.write(verbosity, level, ss.str(), msg);
+		m_stderr.write(msg);
+		m_stdout.write(msg);
 
 		// write to all others
 		for (LogOutput *out : m_outputs) {
-			out->write(verbosity, level, ss.str(), msg);
+			out->write(msg);
 		}
 		
 	}
 
 	logstream Log::info(const std::string &source) {
-		std::string fullsource = "???";
+		std::ostringstream fullsource;
+		fullsource << processID() << '/';
+		fullsource << std::this_thread::get_id() << '/';
 		if (const Section *sec = Section::current()) {
-			fullsource = sec->path();
+			fullsource << sec->path();
 		}
 		if (!source.empty()) {
-			fullsource += '/';
-			fullsource += source;
+			fullsource << '/';
+			fullsource << source;
 		}
-		return logstream(fullsource);
+		return logstream(fullsource.str());
 	}
 
 	logstream Log::warning(const std::string &source) {

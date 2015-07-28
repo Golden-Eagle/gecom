@@ -49,10 +49,52 @@ namespace gecom {
 		info, warning, error, critical
 	};
 
+	inline std::ostream & operator<<(std::ostream &out, loglevel l) {
+		switch (l) {
+		case loglevel::info:
+			out << "Information";
+			break;
+		case loglevel::warning:
+			out << "Warning";
+			break;
+		case loglevel::error:
+			out << "Error";
+			break;
+		case loglevel::critical:
+			out << "Critical";
+			break;
+		default:
+			out << "???";
+			break;
+		}
+		return out;
+	}
+
 	template <typename CharT>
 	class basic_logstream;
 	
 	using logstream = basic_logstream<char>;
+
+	struct logmessage {
+		// RFC3339 time string https://www.ietf.org/rfc/rfc3339.txt
+		std::string time;
+		loglevel level;
+		unsigned verbosity;
+		std::string source;
+		std::string body;
+
+		inline friend std::ostream & operator<<(std::ostream &out, const logmessage &m) {
+			// 2015-07-28 02:20:42.123 | 0>    Error [0/main/gameloop/draw/terrain/GL:API] : Invalid Operation
+			out << m.time << " | " << m.verbosity << "> " << std::setw(11) << m.level << " [";
+			out << m.source << "] : ";
+			if (m.body.find_first_of("\r\n") != std::string::npos) {
+				// start multiline messages on a new line
+				out << '\n';
+			}
+			out << m.body;
+			return out;
+		}
+	};
 
 	class LogOutput {
 	private:
@@ -61,7 +103,7 @@ namespace gecom {
 
 	protected:
 		// this is responsible for trailing newlines
-		virtual void write_impl(unsigned verbosity, loglevel level, const std::string &hdr, const std::string &msg) = 0;
+		virtual void writeImpl(const logmessage &msg) = 0;
 
 	public:
 		LogOutput(const LogOutput &) = delete;
@@ -85,8 +127,8 @@ namespace gecom {
 			m_mute = b;
 		}
 
-		void write(unsigned verbosity, loglevel level, const std::string &hdr, const std::string &msg) {
-			if (!m_mute && verbosity < m_verbosity) write_impl(verbosity, level, hdr, msg);
+		void write(const logmessage &msg) {
+			if (!m_mute && msg.verbosity < m_verbosity) writeImpl(msg);
 		}
 
 		virtual ~LogOutput() { }
@@ -99,8 +141,8 @@ namespace gecom {
 		std::ostream *m_out;
 
 	protected:
-		virtual void write_impl(unsigned, loglevel, const std::string &hdr, const std::string &msg) override {
-			(*m_out) << hdr << msg << std::endl;
+		virtual void writeImpl(const logmessage &msg) override {
+			(*m_out) << msg << std::endl;
 		}
 
 		std::ostream & stream() {
@@ -111,39 +153,63 @@ namespace gecom {
 		explicit StreamLogOutput(std::ostream *out_, bool mute_ = false) : LogOutput(mute_), m_out(out_) { }
 	};
 
-	// log output for writing to std::cout/cerr/clog (as they are the only streams with reliable color support)
-	class ColoredStreamLogOutput : public StreamLogOutput {
+	// log output for writing to console via std::cout/cerr/clog (with color support)
+	class ConsoleLogOutput : public StreamLogOutput {
 	protected:
-		virtual void write_impl(unsigned verbosity, loglevel level, const std::string &hdr, const std::string &msg) override {
+		virtual void writeImpl(const logmessage &msg) override {
 			std::ostream &out = stream();
-			using namespace std;
-			if (verbosity < 2) {
-				switch (level) {
+
+			// colorization
+			std::ostream & (*levelcolor)(std::ostream &);
+			std::ostream & (*delimcolor)(std::ostream &);
+
+			if (msg.verbosity < 2) {
+				delimcolor = termcolor::boldCyan;
+				switch (msg.level) {
 				case loglevel::warning:
-					out << termcolor::boldYellow; break;
+					levelcolor = termcolor::boldYellow;
+					break;
 				case loglevel::error:
-					out << termcolor::boldRed; break;
+				case loglevel::critical:
+					levelcolor = termcolor::boldRed;
+					break;
 				default:
-					out << termcolor::boldGreen;
+					levelcolor = termcolor::boldGreen;
+					break;
 				}
 			} else {
-				switch (level) {
+				delimcolor = termcolor::cyan;
+				switch (msg.level) {
 				case loglevel::warning:
-					out << termcolor::yellow; break;
+					levelcolor = termcolor::yellow;
+					break;
 				case loglevel::error:
-					out << termcolor::red; break;
+				case loglevel::critical:
+					levelcolor = termcolor::red;
+					break;
 				default:
-					out << termcolor::green;
+					levelcolor = termcolor::green;
+					break;
 				}
 			}
-			out << hdr;
-			out << termcolor::reset;
-			out << msg;
-			out << endl;
+
+			// date and time
+			out << termcolor::cyan << msg.time.substr(0, 10) << termcolor::boldCyan << 'T';
+			out << termcolor::cyan << msg.time.substr(11, 12) << termcolor::boldCyan << 'Z';
+			out << delimcolor << " | ";
+			// verbosity and level
+			out << levelcolor << msg.verbosity << delimcolor << "> " << levelcolor << std::setw(11) << msg.level;
+			// source
+			out << delimcolor << " [" << termcolor::reset;
+			out << levelcolor << ' ' << msg.source << ' ';
+			out << delimcolor << "]" << termcolor::reset << '\n';
+			// message body
+			out << msg.body;
+			out << std::endl;
 		}
 
 	public:
-		explicit ColoredStreamLogOutput(std::ostream *out_, bool mute_ = false) : StreamLogOutput(out_, mute_) { }
+		explicit ConsoleLogOutput(std::ostream *out_, bool mute_ = false) : StreamLogOutput(out_, mute_) { }
 	};
 
 	class FileLogOutput : public StreamLogOutput {
@@ -175,15 +241,15 @@ namespace gecom {
 		static std::unordered_set<LogOutput *> m_outputs;
 
 		// stdout starts muted, stderr starts non-muted
-		static ColoredStreamLogOutput m_stdout;
-		static ColoredStreamLogOutput m_stderr;
+		static ConsoleLogOutput m_stdout;
+		static ConsoleLogOutput m_stderr;
 
 	public:
 		static constexpr unsigned defaultVerbosity(loglevel l) {
 			return l == loglevel::critical ? 0 : (l == loglevel::error ? 1 : (l == loglevel::warning ? 2 : 3));
 		}
 		
-		static void write(unsigned verbosity, loglevel level, const std::string &source, const std::string &msg);
+		static void write(unsigned verbosity, loglevel level, const std::string &source, const std::string &body);
 
 		static void addOutput(LogOutput *out) {
 			std::unique_lock<std::mutex> lock(m_mutex);

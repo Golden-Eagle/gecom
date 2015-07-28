@@ -5,7 +5,7 @@
 using namespace gecom;
 
 int main() {
-	Section sec("mainthread");
+	Section sec("main");
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).visible(true);
 
