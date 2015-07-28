@@ -262,15 +262,15 @@ namespace gecom {
 	}
 
 	logstream Log::warning(const std::string &source) {
-		return std::move(info().warning());
+		return std::move(info(source).warning());
 	}
 
 	logstream Log::error(const std::string &source) {
-		return std::move(info().error());
+		return std::move(info(source).error());
 	}
 
 	logstream Log::critical(const std::string &source) {
-		return std::move(info().critical());
+		return std::move(info(source).critical());
 	}
 
 }
