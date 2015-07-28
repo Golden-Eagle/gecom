@@ -11,7 +11,13 @@ namespace {
 	void sectionPath(std::string &path, const gecom::Section *s) {
 		if (const gecom::Section *p = s->parent()) {
 			sectionPath(path, p);
-			path += '/';
+			if (p->name() == s->name()) {
+				// recursive entry, abbreviate path
+				path += '*';
+				return;
+			} else {
+				path += '/';
+			}
 		}
 		path += s->name();
 	}
@@ -26,6 +32,7 @@ namespace gecom {
 		sectionPath(m_entry.path, this);
 		if (thread_profiling) {
 			m_entry.time0 = clock::now();
+			// TODO call to profiler?
 		}
 		current_section = this;
 	}
@@ -34,7 +41,7 @@ namespace gecom {
 		current_section = m_parent;
 		if (thread_profiling) {
 			m_entry.time1 = clock::now();
-			// TODO call to profiler
+			// TODO call to profiler?
 		}
 	}
 

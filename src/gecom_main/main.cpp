@@ -14,6 +14,27 @@ int main() {
 
 	win->makeContextCurrent();
 
+	{
+		Section sec("foo");
+		Log::warning() << "this is a warning";
+		{
+			Section sec("foo");
+			Log::warning() << "this is still a warning";
+			{
+				Section sec("foo");
+				Log::warning() << "this is just a warning";
+				{
+					Section sec("foo");
+					Log::warning() << "this used to be a warning, but we can't afford them anymore";
+					{
+						Section sec("bar");
+						Log::error() << "this is an error, fix it";
+					}
+				}
+			}
+		}
+	}
+
 	while (!win->shouldClose()) {
 		glfwPollEvents();
 		win->swapBuffers();
