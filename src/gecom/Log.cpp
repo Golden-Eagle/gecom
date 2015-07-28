@@ -4,8 +4,8 @@
 #include <windows.h>
 #endif
 
-// Are we posix?
-#ifdef __posix
+// Are we posix-ish?
+#if defined(__unix__) || defined(__APPLE__)
 #include <unistd.h>
 #include <time.h>
 // Posix defines gmtime_r(), which is threadsafe
