@@ -20,13 +20,13 @@ namespace {
 namespace gecom {
 
 	void Section::enter(std::string name) {
+		m_parent = current_section;
 		m_entry.name = name;
 		m_entry.path.clear();
 		sectionPath(m_entry.path, this);
 		if (thread_profiling) {
 			m_entry.time0 = clock::now();
 		}
-		m_parent = current_section;
 		current_section = this;
 	}
 
