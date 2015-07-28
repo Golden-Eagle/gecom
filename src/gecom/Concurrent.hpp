@@ -270,6 +270,7 @@ namespace gecom {
 		// TODO timed wait etc
 
 		virtual ~Event() {
+			Section sec("Event");
 			// no need to lock the observer registry
 			// interrupt all waiting threads, then wait for them to unlock the mutex
 			auto time0 = std::chrono::steady_clock::now();
@@ -282,7 +283,7 @@ namespace gecom {
 				InterruptManager::interrupt(m_cond);
 				if (std::chrono::steady_clock::now() - time0 > std::chrono::milliseconds(100)) {
 					// failed to finish within timeout
-					log("Event").error() << "Destructor failed to finish within timeout";
+					Log::error() << "Destructor failed to finish within timeout";
 					std::abort();
 				}
 			}
@@ -382,46 +383,49 @@ namespace gecom {
 		// start the background threads.
 		// must be called from the main thread.
 		static inline void start() {
+			Section sec("AsyncExec");
 			if (!m_started) {
-				log("AsyncExec").info(0) << "Starting...";
+				Log::info().verbosity(0) << "Starting...";
 				m_main_id = std::this_thread::get_id();
 				m_fast_thread = std::thread([] {
-					log("AsyncExec:fast").info(0) << "Background thread started";
+					Section sec("AsyncExec:fast");
+					Log::info().verbosity(0) << "Background thread started";
 					while (true) {
 						task_t task;
 						try {
 							task = m_fast_queue.pop();
 						} catch (interruption &) {
 							// thread needs to quit
-							log("AsyncExec:fast") << "Interrupted, exiting";
+							Log::info() << "Interrupted, exiting";
 							break;
 						}
 						try {
 							task();
 						} catch (std::exception &e) {
-							log("AsyncExec:fast").error() << "Uncaught exception; what(): " << e.what();
+							Log::error() << "Uncaught exception; what(): " << e.what();
 						} catch (...) {
-							log("AsyncExec:fast").error() << "Uncaught exception (not derived from std::exception)";
+							Log::error() << "Uncaught exception (not derived from std::exception)";
 						}
 					}
 				});
 				m_slow_thread = std::thread([] {
-					log("AsyncExec:slow").info(0) << "Background thread started";
+					Section sec("AsyncExec:slow");
+					Log::info().verbosity(0) << "Background thread started";
 					while (true) {
 						task_t task;
 						try {
 							task = m_slow_queue.pop();
 						} catch (interruption &) {
 							// thread needs to quit
-							log("AsyncExec:slow") << "Interrupted, exiting";
+							Log::info() << "Interrupted, exiting";
 							break;
 						}
 						try {
 							task();
 						} catch (std::exception &e) {
-							log("AsyncExec:slow").error() << "Uncaught exception; what(): " << e.what();
+							Log::error() << "Uncaught exception; what(): " << e.what();
 						} catch (...) {
-							log("AsyncExec:slow").error() << "Uncaught exception (not derived from std::exception)";
+							Log::error() << "Uncaught exception (not derived from std::exception)";
 						}
 					}
 				});
@@ -434,8 +438,9 @@ namespace gecom {
 		// cannot be registered with atexit() due to MSVC stdlib bug
 		// https://connect.microsoft.com/VisualStudio/feedback/details/747145/std-thread-join-hangs-if-called-after-main-exits-when-using-vs2012-rc
 		static inline void stop() {
+			Section sec("AsyncExec");
 			if (m_started) {
-				log("AsyncExec").info(0) << "Stopping background threads...";
+				Log::info().verbosity(0) << "Stopping background threads...";
 				// give the last log message time to show up
 				std::this_thread::sleep_for(std::chrono::milliseconds(10));
 				InterruptManager::interrupt(m_fast_thread.get_id());
@@ -474,6 +479,7 @@ namespace gecom {
 		// execute tasks for the current thread up to some time limit
 		template <typename RepT, typename Period>
 		static inline void execute(const std::chrono::duration<RepT, Period> &dur) {
+			Section sec("AsyncExec");
 			blocking_queue<task_t> *q = nullptr;
 			{
 				std::lock_guard<std::mutex> lock(m_exec_mutex);
@@ -490,9 +496,9 @@ namespace gecom {
 					try {
 						task();
 					} catch (std::exception &e) {
-						log("AsyncExec").error() << "Uncaught exception on thread " << std::this_thread::get_id() << "; what(): " << e.what();
+						Log::error() << "Uncaught exception; what(): " << e.what();
 					} catch (...) {
-						log("AsyncExec").error() << "Uncaught exception on thread " << std::this_thread::get_id() << " (not derived from std::exception)";
+						Log::error() << "Uncaught exception (not derived from std::exception)";
 					}
 				} while (std::chrono::steady_clock::now() < time1);
 			}

@@ -356,11 +356,6 @@ namespace gecom {
 
 	};
 
-	// TODO remove this
-	inline logstream log(const std::string &source = "Global") {
-		return Log::info(source);
-	}
-
 }
 
 #endif // GECOM_LOG_HPP

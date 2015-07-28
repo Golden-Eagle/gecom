@@ -28,7 +28,6 @@
 #include <ctime>
 #include <thread>
 
-#include "Section.hpp"
 #include "Log.hpp"
 
 namespace gecom {

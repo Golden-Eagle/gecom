@@ -39,7 +39,7 @@ namespace skadi {
 		if (infologLength > 1) {
 			std::vector<char> infoLog(infologLength);
 			glGetShaderInfoLog(obj, infologLength, &charsWritten, &infoLog[0]);
-			gecom::log("SimpleShader") << "SHADER:\n" << &infoLog[0];
+			gecom::Log::info() << "SHADER:\n" << &infoLog[0];
 		}
 	}
 
@@ -50,7 +50,7 @@ namespace skadi {
 		if (infologLength > 1) {
 			std::vector<char> infoLog(infologLength);
 			glGetProgramInfoLog(obj, infologLength, &charsWritten, &infoLog[0]);
-			gecom::log("SimpleShader") << "PROGRAM:\n" << &infoLog[0];
+			gecom::Log::info() << "PROGRAM:\n" << &infoLog[0];
 		}
 	}
 
@@ -83,6 +83,7 @@ namespace skadi {
 	}
 
 	inline GLuint makeShaderProgram(const std::string &profile, const std::vector<GLenum> &stypes, const std::string &source) {
+		gecom::Section sec("SimpleShader");
 		GLuint prog = glCreateProgram();
 
 		auto get_define = [](GLenum stype) {
@@ -112,7 +113,7 @@ namespace skadi {
 		}
 
 		linkShaderProgram(prog);
-		gecom::log("SimpleShader") << "Shader program compiled and linked successfully";
+		gecom::Log::info() << "Shader program compiled and linked successfully";
 		return prog;
 	}
 

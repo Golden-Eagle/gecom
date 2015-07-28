@@ -162,12 +162,11 @@ namespace gecom {
 		}
 
 		void callbackErrorGLFW(int error, const char *description) {
-			gecom::log("GLFW").error() << "Error " << error << " : " << description;
+			Log::error("GLFW") << "Error " << error << " : " << description;
 		}
 
 		void callbackErrorGLAER(const char *msg) {
-			(void) msg;
-			// as yet, GLAER never calls this
+			Log::error("GLAER") << "Error: " << msg;
 		}
 
 		// init GLFW global state.
@@ -176,18 +175,18 @@ namespace gecom {
 		void init_glfw() {
 			static bool done = false;
 			if (!done) {
-				gecom::log("Window") << "GLFW initializing...";
+				Log::info() << "GLFW initializing...";
 				// this is safe to call before glfwInit()
 				glfwSetErrorCallback(callbackErrorGLFW);
 				if (!glfwInit()) {
-					gecom::log("Window").error() << "GLFW initialization failed";
+					Log::critical() << "GLFW initialization failed";
 					// screw catching this, ever
 					std::abort();
 				}
 				// set GLAER callbacks here too, but don't init anything yet
 				glaerSetErrorCallback(callbackErrorGLAER);
 				glaerSetCurrentContextProvider(getCurrentGlaerContext);
-				gecom::log("Window").info(0) << "GLFW initialized";
+				Log::info().verbosity(0) << "GLFW initialized";
 				done = true;
 			}
 		}
@@ -239,7 +238,7 @@ namespace gecom {
 			{
 				// piecewise construct log message
 				// new scope so it submits before we throw, if we throw
-				auto logs = log(log_source);
+				auto logs = Log::info(log_source);
 
 				// message type -> log type
 				switch (type) {
@@ -422,27 +421,28 @@ namespace gecom {
 	}
 
 	void Window::makeContextCurrent() {
+		Section sec("Window");
 		glfwMakeContextCurrent(m_handle);
 		WindowData *wd = getWindowData(m_handle);
 		// init glaer
 		if (!wd->init_done) {
-			gecom::log("Window") << "GLAER initializing...";
+			Log::info() << "GLAER initializing...";
 			//GLenum t_err = glGetError();
 			//gecom::log("Window") << "GLEW t_err: " << t_err;
 			if (!glaerInitCurrentContext()) {
-				gecom::log("Window").error() << "GLAER initialization failed:";
+				Log::error() << "GLAER initialization failed";
 				glfwTerminate();
 				std::abort();
 			}
 			// clear any GL errors from init
 			GLenum gl_err = glGetError();
 			while (gl_err) {
-				gecom::log("Window") << "GLAER initialization left GL error " << gl_err;
+				Log::info() << "GLAER initialization left GL error " << gl_err;
 				gl_err = glGetError();
 			}
 			//gecom::log("Window") << "GL Error: " << gluErrorString(gl_err);
-			gecom::log("Window") << "GL version string: " << glGetString(GL_VERSION);
-			gecom::log("Window").info(0) << "GLAER initialized";
+			Log::info() << "GL version string: " << glGetString(GL_VERSION);
+			Log::info().verbosity(0) << "GLAER initialized";
 			wd->init_done = true;
 			// enable GL_ARB_debug_output if available
 			if (glfwExtensionSupported("GL_ARB_debug_output")) {
@@ -451,9 +451,9 @@ namespace gecom {
 				// set the callback
 				glDebugMessageCallback(callbackDebugGL, this);
 				glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, true);
-				log("Window") << "GL debug callback installed";
+				Log::info() << "GL debug callback installed";
 			} else {
-				log("Window") << "GL_ARB_debug_output not available";
+				Log::info() << "GL_ARB_debug_output not available";
 			}
 		}
 	}
@@ -488,9 +488,10 @@ namespace gecom {
 
 	// this should only be called from the main thread
 	create_window_args::operator Window * () {
-		gecom::log("Window").info(0) << "Creating window... [title=" << m_title << "]";
+		Section sec("Window");
+		Log::info().verbosity(0) << "Creating window... [title=" << m_title << "]";
 		if (m_hints[GLFW_OPENGL_DEBUG_CONTEXT]) {
-			log("Window").info(0) << "Requesting debug GL context";
+			Log::info().verbosity(0) << "Requesting debug GL context";
 		}
 		init_glfw();
 		glfwDefaultWindowHints();
@@ -502,10 +503,10 @@ namespace gecom {
 		GLFWwindow *handle = glfwCreateWindow(m_size.w, m_size.h, m_title.c_str(), m_monitor, m_share ? m_share->handle() : nullptr);
 		glfwDefaultWindowHints();
 		if (!handle) {
-			gecom::log("Window").error() << "GLFW window creation failed";
+			Log::error() << "GLFW window creation failed";
 			throw window_error("GLFW window creation failed");
 		}
-		gecom::log("Window").info(0) << "Window created";
+		Log::info().verbosity(0) << "Window created [title=" << m_title << "]";
 		return new Window(handle, m_share);
 	}
 

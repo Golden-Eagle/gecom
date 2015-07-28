@@ -26,7 +26,7 @@ namespace gecom {
 	inline void checkGL() {
 		GLenum err = glGetError();
 		if (err != GL_NO_ERROR) {
-			gecom::log("GL").error() << "GL error: " << err;
+			Log::error("GL") << "GL error: " << err;
 			throw std::runtime_error("BOOM!");
 		}
 	}
@@ -34,17 +34,17 @@ namespace gecom {
 	inline void checkFB() {
 		GLenum err = glCheckFramebufferStatus(GL_DRAW_FRAMEBUFFER);
 		if (err != GL_FRAMEBUFFER_COMPLETE) {
-			gecom::log("GL").error() << "Framebuffer status: " << err;
-			gecom::log("GL").error() << "YOU BROKE THE FRAMEBUFFER!";
+			Log::error("GL") << "Framebuffer status: " << err;
+			Log::error("GL") << "YOU BROKE THE FRAMEBUFFER!";
 			throw std::runtime_error("OH NOES! THE FRAMEBUFFER IS BROKED");
 		}
 	}
 
 	inline void checkExtension(const std::string &ext_name) {
 		if (glfwExtensionSupported(ext_name.c_str())) {
-			gecom::log("GL") << "Extension " << ext_name << " detected.";
+			Log::info("GL") << "Extension " << ext_name << " detected.";
 		} else {
-			gecom::log("GL").error() << "Extension " << ext_name << " not supported.";
+			Log::error("GL") << "Extension " << ext_name << " not supported.";
 			throw std::runtime_error("unsupported extension");
 		}
 	}
