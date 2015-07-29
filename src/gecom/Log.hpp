@@ -84,7 +84,7 @@ namespace gecom {
 		std::string body;
 
 		inline friend std::ostream & operator<<(std::ostream &out, const logmessage &m) {
-			// 2015-07-28 02:20:42.123 | 0>    Error [0/main/gameloop/draw/terrain/GL:API] : Invalid Operation
+			// 2015-07-28T02:20:42.123Z | 0>    Error [ 1/1/main/gameloop/draw/terrain/GL:API ] : Invalid Operation
 			out << m.time << " | " << m.verbosity << "> " << std::setw(11) << m.level << " [";
 			out << m.source << "] : ";
 			if (m.body.find_first_of("\r\n") != std::string::npos) {
@@ -156,57 +156,7 @@ namespace gecom {
 	// log output for writing to console via std::cout/cerr/clog (with color support)
 	class ConsoleLogOutput : public StreamLogOutput {
 	protected:
-		virtual void writeImpl(const logmessage &msg) override {
-			std::ostream &out = stream();
-
-			// colorization
-			std::ostream & (*levelcolor)(std::ostream &);
-			std::ostream & (*delimcolor)(std::ostream &);
-
-			if (msg.verbosity < 2) {
-				delimcolor = termcolor::boldCyan;
-				switch (msg.level) {
-				case loglevel::warning:
-					levelcolor = termcolor::boldYellow;
-					break;
-				case loglevel::error:
-				case loglevel::critical:
-					levelcolor = termcolor::boldRed;
-					break;
-				default:
-					levelcolor = termcolor::boldGreen;
-					break;
-				}
-			} else {
-				delimcolor = termcolor::cyan;
-				switch (msg.level) {
-				case loglevel::warning:
-					levelcolor = termcolor::yellow;
-					break;
-				case loglevel::error:
-				case loglevel::critical:
-					levelcolor = termcolor::red;
-					break;
-				default:
-					levelcolor = termcolor::green;
-					break;
-				}
-			}
-
-			// date and time
-			out << termcolor::cyan << msg.time.substr(0, 10) << termcolor::boldCyan << 'T';
-			out << termcolor::cyan << msg.time.substr(11, 12) << termcolor::boldCyan << 'Z';
-			out << delimcolor << " | ";
-			// verbosity and level
-			out << levelcolor << msg.verbosity << delimcolor << "> " << levelcolor << std::setw(11) << msg.level;
-			// source
-			out << delimcolor << " [" << termcolor::reset;
-			out << levelcolor << ' ' << msg.source << ' ';
-			out << delimcolor << "]" << termcolor::reset << '\n';
-			// message body
-			out << msg.body;
-			out << std::endl;
-		}
+		virtual void writeImpl(const logmessage &msg) override;
 
 	public:
 		explicit ConsoleLogOutput(std::ostream *out_, bool mute_ = false) : StreamLogOutput(out_, mute_) { }

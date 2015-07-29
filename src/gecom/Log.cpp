@@ -25,6 +25,7 @@
 #error unable to find threadsafe gmtime() or alternative
 #endif
 
+#include <cctype>
 #include <ctime>
 #include <thread>
 
@@ -250,6 +251,65 @@ namespace gecom {
 			out->write(msg);
 		}
 		
+	}
+
+	void ConsoleLogOutput::writeImpl(const logmessage &msg) {
+		std::ostream &out = stream();
+
+		// colorization
+		std::ostream & (*levelcolor)(std::ostream &);
+		std::ostream & (*delimcolor)(std::ostream &);
+
+		if (msg.verbosity < 2) {
+			delimcolor = termcolor::boldCyan;
+			switch (msg.level) {
+			case loglevel::warning:
+				levelcolor = termcolor::boldYellow;
+				break;
+			case loglevel::error:
+			case loglevel::critical:
+				levelcolor = termcolor::boldRed;
+				break;
+			default:
+				levelcolor = termcolor::boldGreen;
+				break;
+			}
+		} else {
+			delimcolor = termcolor::cyan;
+			switch (msg.level) {
+			case loglevel::warning:
+				levelcolor = termcolor::yellow;
+				break;
+			case loglevel::error:
+			case loglevel::critical:
+				levelcolor = termcolor::red;
+				break;
+			default:
+				levelcolor = termcolor::green;
+				break;
+			}
+		}
+
+		// date and time
+		for (auto c : msg.time) {
+			if (std::isdigit(c)) {
+				out << termcolor::cyan << c;
+			} else if (std::isalpha(c)) {
+				out << termcolor::blue << c;
+			} else {
+				out << termcolor::boldBlack << c;
+			}
+		}
+		out << delimcolor << " | ";
+		// verbosity and level
+		out << levelcolor << msg.verbosity << delimcolor << "> " << levelcolor << std::setw(11) << msg.level;
+		// source
+		out << delimcolor << " [" << termcolor::reset;
+		out << levelcolor << ' ' << msg.source << ' ';
+		out << delimcolor << "]" << termcolor::reset << '\n';
+		// message body
+		out << msg.body;
+		out << std::endl;
 	}
 
 	logstream Log::info(const std::string &source) {
