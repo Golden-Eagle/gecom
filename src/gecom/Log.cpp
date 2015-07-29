@@ -181,7 +181,7 @@ namespace gecom {
 #ifdef _WIN32
 			return GetCurrentProcessId();
 #elif defined(GECOM_HAVE_GETPID)
-			return uintmax_t(getpid());
+			return getpid();
 #else
 			return "???";
 #endif
