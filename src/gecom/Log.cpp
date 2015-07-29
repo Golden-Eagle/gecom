@@ -8,10 +8,13 @@
 #if defined(__unix__) || defined(__APPLE__)
 #include <unistd.h>
 #include <time.h>
+#include <sys/ioctl.h>
 // Posix defines gmtime_r(), which is threadsafe
 #define GECOM_HAVE_GMTIME_R
 // Posix defines getpid()
 #define GECOM_HAVE_GETPID
+// We probably have ioctl() for terminal size
+#define GECOM_HAVE_IOCTL
 #endif
 
 // is our gmtime() threadsafe?
@@ -186,6 +189,22 @@ namespace gecom {
 			return "???";
 #endif
 		}
+
+		int consoleWidth() {
+#ifdef _WIN32
+			HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+			CONSOLE_SCREEN_BUFFER_INFO csbi;
+			GetConsoleScreenBufferInfo(h, &csbi);
+			return csbi.srWindow.Right - csbi.srWindow.Left + 1;
+#elif defined(GECOM_HAVE_IOCTL)
+			struct winsize w;
+			ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+			return w.ws_col;
+#else
+			return 80;
+#endif
+		}
+
 	}
 
 	std::unordered_set<LogOutput *> Log::m_outputs;
@@ -301,12 +320,23 @@ namespace gecom {
 			}
 		}
 		out << delimcolor << " | ";
+
 		// verbosity and level
 		out << levelcolor << msg.verbosity << delimcolor << "> " << levelcolor << std::setw(11) << msg.level;
+
 		// source
 		out << delimcolor << " [" << termcolor::reset;
 		out << levelcolor << ' ' << msg.source << ' ';
-		out << delimcolor << "]" << termcolor::reset << '\n';
+		out << delimcolor << "]" << termcolor::reset;
+
+		// do we need to start body on new line?
+		// TODO check msg size against console width and cursor col
+		if (msg.body.find_first_of("\r\n") != std::string::npos || msg.body.size() > 50) {
+			out << '\n';
+		} else {
+			out << delimcolor << " : " << termcolor::reset;
+		}
+
 		// message body
 		out << msg.body;
 		out << std::endl;
