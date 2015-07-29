@@ -219,14 +219,19 @@ namespace gecom {
 		// 2015-07-29T12:43:15.123Z
 		// we always use 3 digit second-fraction
 		std::ostringstream timess;
-		timess << std::setfill('0');
-		timess << std::setw(4) << (1900 + t->tm_year) << '-';
-		timess << std::setw(2) << (1 + t->tm_mon) << '-';
-		timess << std::setw(2) << t->tm_mday << 'T';
-		timess << std::setw(2) << t->tm_hour << ':';
-		timess << std::setw(2) << t->tm_min << ':';
-		timess << std::setw(2) << t->tm_sec << '.';
-		timess << std::setw(3) << duration_cast<milliseconds>(t1 - t0).count() << 'Z';
+
+		if (t) {
+			timess << std::setfill('0');
+			timess << std::setw(4) << (1900 + t->tm_year) << '-';
+			timess << std::setw(2) << (1 + t->tm_mon) << '-';
+			timess << std::setw(2) << t->tm_mday << 'T';
+			timess << std::setw(2) << t->tm_hour << ':';
+			timess << std::setw(2) << t->tm_min << ':';
+			timess << std::setw(2) << t->tm_sec << '.';
+			timess << std::setw(3) << duration_cast<milliseconds>(t1 - t0).count() << 'Z';
+		} else {
+			timess << "0000-00-00T00:00:00.000Z";
+		}
 
 		// prepare the message
 		logmessage msg;
