@@ -13,6 +13,7 @@ set(headers
 	"Window.hpp"
 	"Section.hpp"
 	"Profiler.hpp"
+	"Terminal.hpp"
 )
 
 # list .cpp
@@ -22,6 +23,7 @@ set(sources
 	"Perlin.cpp"
 	"Window.cpp"
 	"Section.cpp"
+	"Terminal.cpp"
 )
 
 add_library(gecom ${headers} ${sources})
