@@ -1,11 +1,12 @@
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
+#include "Platform.hpp"
+
+#ifdef GECOM_PLATFORM_WIN32
 #include <windows.h>
 #endif
 
 // Are we posix-ish?
-#if defined(__unix__) || defined(__APPLE__)
+#ifdef GECOM_PLATFORM_POSIX
 #include <unistd.h>
 #include <time.h>
 #include <sys/ioctl.h>

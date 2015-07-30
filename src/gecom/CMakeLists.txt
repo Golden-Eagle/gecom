@@ -14,6 +14,7 @@ set(headers
 	"Section.hpp"
 	"Profiler.hpp"
 	"Terminal.hpp"
+	"Platform.hpp"
 )
 
 # list .cpp
