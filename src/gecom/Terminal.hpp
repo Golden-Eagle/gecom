@@ -9,8 +9,8 @@ namespace gecom {
 
 	namespace terminal {
 
-		// reset color
-		std::ostream & reset(std::ostream &);
+		// color off
+		std::ostream & colorOff(std::ostream &);
 
 		// regular colors
 		std::ostream & black(std::ostream &);
@@ -33,9 +33,10 @@ namespace gecom {
 		std::ostream & boldWhite(std::ostream &);
 
 		// stdout/stderr streambufs with color support
+		// these interpret or forward ANSI escape codes when appropriate
 		std::streambuf * stdoutBuf();
-		std::wstreambuf * wstdoutBuf();
 		std::streambuf * stderrBuf();
+		std::wstreambuf * wstdoutBuf();
 		std::wstreambuf * wstderrBuf();
 
 		// (w,h) of visible area
