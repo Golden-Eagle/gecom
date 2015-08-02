@@ -16,35 +16,6 @@
 
 namespace gecom {
 
-	namespace termcolor {
-
-		// Terminal Color Manipulators (use these like std::endl on std::cout/cerr/clog)
-
-		// Reset Color
-		std::ostream & reset(std::ostream &);
-		
-		// Regular Colors
-		std::ostream & black(std::ostream &);
-		std::ostream & red(std::ostream &);
-		std::ostream & green(std::ostream &);
-		std::ostream & yellow(std::ostream &);
-		std::ostream & blue(std::ostream &);
-		std::ostream & purple(std::ostream &);
-		std::ostream & cyan(std::ostream &);
-		std::ostream & white(std::ostream &);
-		
-		// Bold Colors
-		std::ostream & boldBlack(std::ostream &);
-		std::ostream & boldRed(std::ostream &);
-		std::ostream & boldGreen(std::ostream &);
-		std::ostream & boldYellow(std::ostream &);
-		std::ostream & boldBlue(std::ostream &);
-		std::ostream & boldPurple(std::ostream &);
-		std::ostream & boldCyan(std::ostream &);
-		std::ostream & boldWhite(std::ostream &);
-
-	}
-
 	enum class loglevel {
 		info, warning, error, critical
 	};

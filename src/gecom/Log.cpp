@@ -1,6 +1,9 @@
 
 #include "Platform.hpp"
 
+// temp
+#define GECOM_NO_TERMCOLOR
+
 #ifdef GECOM_PLATFORM_WIN32
 #include <windows.h>
 #endif
@@ -20,7 +23,7 @@
 
 // is our gmtime() threadsafe?
 #if defined(_MSC_VER) || defined(__MINGW32__) || defined(__MINGW64__)
-// MSVC stdlib uses TLS; is a DLL so must be threadsafe
+// MSVC stdlib uses TLS
 // MinGW implements gmtime_r() as a macro around gmtime(), so gmtime() must be threadsafe
 #define GECOM_GMTIME_THREADSAFE
 #endif

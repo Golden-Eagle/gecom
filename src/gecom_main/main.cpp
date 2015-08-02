@@ -1,12 +1,32 @@
 
+
+#include <thread>
+#include <chrono>
+#include <iostream>
+
+#include <gecom/Terminal.hpp>
 #include <gecom/Window.hpp>
 #include <gecom/Log.hpp>
 #include <gecom/Concurrent.hpp>
 
 using namespace gecom;
+using namespace std;
 
 int main() {
 	Section sec("main");
+
+	// need to reference something from terminal.cpp to initialize redirection
+	cout << terminal::colorOff << std::endl;
+
+	fprintf(stdout, "<thisis:stdout>\n");
+	fflush(stdout);
+
+	for (int i = 0; i < 50; i++) {
+		cerr << "<thisis:cerr>" << endl;
+		cout << "<thisis:cout>" << endl;
+		this_thread::sleep_for(chrono::milliseconds(50));
+	}
+
 
 	AsyncExecutor::start();
 

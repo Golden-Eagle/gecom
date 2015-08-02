@@ -25,6 +25,7 @@ set(sources
 	"Window.cpp"
 	"Section.cpp"
 	"Terminal.cpp"
+	"Platform.cpp"
 )
 
 add_library(gecom ${headers} ${sources})

@@ -32,17 +32,6 @@ namespace gecom {
 		std::ostream & boldCyan(std::ostream &);
 		std::ostream & boldWhite(std::ostream &);
 
-		// stdout/stderr streambufs with color support
-		// these interpret or forward ANSI escape codes when appropriate
-		std::streambuf * stdoutBuf();
-		std::streambuf * stderrBuf();
-		std::wstreambuf * wstdoutBuf();
-		std::wstreambuf * wstderrBuf();
-
-		// (w,h) of visible area
-		std::pair<int, int> screenSize(const std::streambuf *);
-		std::pair<int, int> screenSize(const std::wstreambuf *);
-
 	}
 
 }
