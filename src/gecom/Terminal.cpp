@@ -232,8 +232,6 @@ namespace {
 
 		void close() noexcept {
 			if (m_hreal != INVALID_HANDLE_VALUE) {
-				// reredirect FILE to conout$
-				freopen("CONOUT$", "w", m_fp);
 				// cancel pending io
 				cancel();
 				// attempt to read and flush any available data
@@ -251,24 +249,26 @@ namespace {
 						// discard errors
 						break;
 					}
-					// read bytes synchronously
-					DWORD bytesread = 0;
-					if (!ReadFile(
-						m_hpiper,
-						m_pwrite,
-						bytesavail,
-						&bytesread,
-						nullptr
+					if (bytesavail > 0) {
+						// read bytes synchronously
+						DWORD bytesread = 0;
+						if (!ReadFile(
+							m_hpiper,
+							m_pwrite,
+							bytesavail,
+							&bytesread,
+							nullptr
 						)) {
-						// discard errors
-						break;
-					}
-					// push bytes through
-					try {
-						flush();
-					} catch (...) {
-						// discard errors
-						break;
+							// discard errors
+							break;
+						}
+						// push bytes through
+						try {
+							flush();
+						} catch (...) {
+							// discard errors
+							break;
+						}
 					}
 				} while (bytesavail > 0);
 				// disconnect
@@ -300,6 +300,10 @@ namespace {
 
 		bool pending() const noexcept {
 			return m_pendingio;
+		}
+
+		FILE * file() const noexcept {
+			return m_fp;
 		}
 
 		~Redirection() {
@@ -403,13 +407,38 @@ namespace {
 
 		~StdIORedirectInit() {
 			if (redirect_worker.joinable()) {
-				// signal redirect worker should exit
+				//fprintf(stdout, "goodbye from redirected stdout\n");
+				//fprintf(stderr, "goodbye from redirected stderr\n");
+				//fflush(stdout);
+				//fflush(stderr);
+				// dup handles, freopen to conout$, flush pipes
+				std::vector<HANDLE> hdups;
+				for (const auto &rd : redirections) {
+					HANDLE hpipew;
+					// get pipe write handle duplicate
+					// freopen causes the original to be closed
+					DuplicateHandle(
+						GetCurrentProcess(),
+						HANDLE(_get_osfhandle(_fileno(rd->file()))),
+						GetCurrentProcess(),
+						&hpipew,
+						0,
+						false,
+						DUPLICATE_SAME_ACCESS
+					);
+					hdups.push_back(hpipew);
+					// freopen file to conout$
+					freopen("CONOUT$", "w", rd->file());
+					// flush
+					FlushFileBuffers(hpipew);
+				}
+				// signal worker should exit
 				SetEvent(redirect_should_exit);
 				// wait for worker to stop
 				redirect_worker.join();
-				// close the redirections
-				for (const auto &rd : redirections) {
-					rd->close();
+				// close duplicate handles
+				for (HANDLE h : hdups) {
+					CloseHandle(h);
 				}
 				//fprintf(stderr, "redirection stopped\n");
 			}
