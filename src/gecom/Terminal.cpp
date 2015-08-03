@@ -91,9 +91,6 @@ namespace {
 	using gecom::throwLastWin32Error;
 	using gecom::win32_error;
 
-	// real stderr handle
-	HANDLE hstderr { GetStdHandle(STD_ERROR_HANDLE) };
-
 	// worker thread
 	std::thread redirect_worker;
 
