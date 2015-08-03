@@ -82,7 +82,7 @@ namespace gecom {
 
 		LogOutput(bool mute_ = false) : m_mute(mute_) { }
 
-		unsigned verbosity() {
+		unsigned verbosity() const {
 			return m_verbosity;
 		}
 
@@ -90,7 +90,7 @@ namespace gecom {
 			m_verbosity = v;
 		}
 
-		bool mute() {
+		bool mute() const {
 			return m_mute;
 		}
 
@@ -116,23 +116,15 @@ namespace gecom {
 			(*m_out) << msg << std::endl;
 		}
 
-		std::ostream & stream() {
-			return *m_out;
+		std::ostream * stream() const {
+			return m_out;
 		}
 
 	public:
 		explicit StreamLogOutput(std::ostream *out_, bool mute_ = false) : LogOutput(mute_), m_out(out_) { }
 	};
 
-	// log output for writing to console via std::cout/cerr/clog (with color support)
-	class ConsoleLogOutput : public StreamLogOutput {
-	protected:
-		virtual void writeImpl(const logmessage &msg) override;
-
-	public:
-		explicit ConsoleLogOutput(std::ostream *out_, bool mute_ = false) : StreamLogOutput(out_, mute_) { }
-	};
-
+	// log output that writes to a file
 	class FileLogOutput : public StreamLogOutput {
 	private:
 		std::ofstream m_out;
@@ -140,7 +132,7 @@ namespace gecom {
 	public:
 		explicit FileLogOutput(
 			const std::string &fname_,
-			std::ios_base::openmode mode_ = std::ios::trunc,
+			std::ios::openmode mode_ = std::ios::trunc,
 			bool mute_ = false
 		) :
 			StreamLogOutput(&m_out, mute_)
@@ -161,10 +153,6 @@ namespace gecom {
 		static std::mutex m_mutex;
 		static std::unordered_set<LogOutput *> m_outputs;
 
-		// stdout starts muted, stderr starts non-muted
-		static ConsoleLogOutput m_stdout;
-		static ConsoleLogOutput m_stderr;
-
 	public:
 		static constexpr unsigned defaultVerbosity(loglevel l) {
 			return l == loglevel::critical ? 0 : (l == loglevel::error ? 1 : (l == loglevel::warning ? 2 : 3));
@@ -182,13 +170,11 @@ namespace gecom {
 			m_outputs.erase(out);
 		}
 
-		static LogOutput & stdOut() {
-			return m_stdout;
-		}
+		// stdout starts muted
+		static LogOutput * stdOut();
 
-		static LogOutput & stdErr() {
-			return m_stderr;
-		}
+		// stderr starts unmuted
+		static LogOutput * stdErr();
 
 		static logstream info(const std::string &source = "");
 

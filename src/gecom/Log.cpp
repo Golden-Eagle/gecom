@@ -36,103 +36,46 @@
 #include "Log.hpp"
 #include "Terminal.hpp"
 
-namespace gecom {
-
-	namespace {
-		auto processID() {
+namespace {
+	auto processID() {
 #ifdef _WIN32
-			return GetCurrentProcessId();
+		return GetCurrentProcessId();
 #elif defined(GECOM_HAVE_GETPID)
-			return getpid();
+		return getpid();
 #else
-			return "???";
+		return "???";
 #endif
-		}
+	}
 
-		int consoleWidth() {
+	int consoleWidth() {
 #ifdef _WIN32
-			HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
-			CONSOLE_SCREEN_BUFFER_INFO csbi;
-			GetConsoleScreenBufferInfo(h, &csbi);
-			return csbi.srWindow.Right - csbi.srWindow.Left + 1;
+		HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+		CONSOLE_SCREEN_BUFFER_INFO csbi;
+		GetConsoleScreenBufferInfo(h, &csbi);
+		return csbi.srWindow.Right - csbi.srWindow.Left + 1;
 #elif defined(GECOM_HAVE_IOCTL)
-			struct winsize w;
-			ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-			return w.ws_col;
+		struct winsize w;
+		ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+		return w.ws_col;
 #else
-			return 80;
+		return 80;
 #endif
-		}
-
 	}
 
-	std::unordered_set<LogOutput *> Log::m_outputs;
-	std::mutex Log::m_mutex;
+	// log output for writing to console via std::cout/cerr/clog (with color)
+	class ConsoleLogOutput : public gecom::StreamLogOutput {
+	protected:
+		virtual void writeImpl(const gecom::logmessage &msg) override;
 
-	ConsoleLogOutput Log::m_stdout(&std::cout, true);
-	ConsoleLogOutput Log::m_stderr(&std::clog, false);
+	public:
+		explicit ConsoleLogOutput(std::ostream *out_, bool mute_ = false) : StreamLogOutput(out_, mute_) { }
+	};
 
-	void Log::write(unsigned verbosity, loglevel level, const std::string &source, const std::string &body) {
-		std::unique_lock<std::mutex> lock(m_mutex);
+	void ConsoleLogOutput::writeImpl(const gecom::logmessage &msg) {
+		namespace terminal = gecom::terminal;
+		using gecom::loglevel;
 
-		using namespace std::chrono;
-
-		// truncate to seconds, use difference for second-fraction part of timestamp
-		auto t1 = system_clock::now();
-		auto t0 = time_point_cast<seconds>(t1);
-		std::time_t tt = std::chrono::system_clock::to_time_t(t0);
-		
-		// who the fuck thought tm was a good struct name?
-		std::tm *t = nullptr;
-
-		// why is this shit so terrible? WHY?
-#ifdef GECOM_HAVE_GMTIME_R
-		std::tm bullshit;
-		t = &bullshit;
-		gmtime_r(&tt, t);
-#else
-		t = std::gmtime(&tt);
-#endif
-		
-		// format time: https://www.ietf.org/rfc/rfc3339.txt
-		// 2015-07-29T12:43:15.123Z
-		// we always use 3 digit second-fraction
-		std::ostringstream timess;
-
-		if (t) {
-			timess << std::setfill('0');
-			timess << std::setw(4) << (1900 + t->tm_year) << '-';
-			timess << std::setw(2) << (1 + t->tm_mon) << '-';
-			timess << std::setw(2) << t->tm_mday << 'T';
-			timess << std::setw(2) << t->tm_hour << ':';
-			timess << std::setw(2) << t->tm_min << ':';
-			timess << std::setw(2) << t->tm_sec << '.';
-			timess << std::setw(3) << duration_cast<milliseconds>(t1 - t0).count() << 'Z';
-		} else {
-			timess << "0000-00-00T00:00:00.000Z";
-		}
-
-		// prepare the message
-		logmessage msg;
-		msg.time = timess.str();
-		msg.level = level;
-		msg.verbosity = verbosity;
-		msg.source = source;
-		msg.body = body;
-
-		// write to stderr and stdout
-		m_stderr.write(msg);
-		m_stdout.write(msg);
-
-		// write to all others
-		for (LogOutput *out : m_outputs) {
-			out->write(msg);
-		}
-		
-	}
-
-	void ConsoleLogOutput::writeImpl(const logmessage &msg) {
-		std::ostream &out = stream();
+		std::ostream &out = *stream();
 
 		// colorization
 		std::ostream & (*levelcolor)(std::ostream &);
@@ -199,6 +142,83 @@ namespace gecom {
 		// message body
 		out << msg.body;
 		out << std::endl;
+	}
+
+	// stdio log outputs
+	ConsoleLogOutput stdout_logoutput(&std::cout, true);
+	ConsoleLogOutput stderr_logoutput(&std::clog, false);
+}
+
+namespace gecom {
+
+	std::unordered_set<LogOutput *> Log::m_outputs;
+	std::mutex Log::m_mutex;
+
+	void Log::write(unsigned verbosity, loglevel level, const std::string &source, const std::string &body) {
+		std::unique_lock<std::mutex> lock(m_mutex);
+
+		using namespace std::chrono;
+
+		// truncate to seconds, use difference for second-fraction part of timestamp
+		auto t1 = system_clock::now();
+		auto t0 = time_point_cast<seconds>(t1);
+		std::time_t tt = std::chrono::system_clock::to_time_t(t0);
+		
+		// who the fuck thought tm was a good struct name?
+		std::tm *t = nullptr;
+
+		// why is this shit so terrible? WHY?
+#ifdef GECOM_HAVE_GMTIME_R
+		std::tm bullshit;
+		t = &bullshit;
+		gmtime_r(&tt, t);
+#else
+		t = std::gmtime(&tt);
+#endif
+		
+		// format time: https://www.ietf.org/rfc/rfc3339.txt
+		// 2015-07-29T12:43:15.123Z
+		// we always use 3 digit second-fraction
+		std::ostringstream timess;
+
+		if (t) {
+			timess << std::setfill('0');
+			timess << std::setw(4) << (1900 + t->tm_year) << '-';
+			timess << std::setw(2) << (1 + t->tm_mon) << '-';
+			timess << std::setw(2) << t->tm_mday << 'T';
+			timess << std::setw(2) << t->tm_hour << ':';
+			timess << std::setw(2) << t->tm_min << ':';
+			timess << std::setw(2) << t->tm_sec << '.';
+			timess << std::setw(3) << duration_cast<milliseconds>(t1 - t0).count() << 'Z';
+		} else {
+			timess << "0000-00-00T00:00:00.000Z";
+		}
+
+		// prepare the message
+		logmessage msg;
+		msg.time = timess.str();
+		msg.level = level;
+		msg.verbosity = verbosity;
+		msg.source = source;
+		msg.body = body;
+
+		// write to stdio
+		stderr_logoutput.write(msg);
+		stdout_logoutput.write(msg);
+
+		// write to all others
+		for (LogOutput *out : m_outputs) {
+			out->write(msg);
+		}
+		
+	}
+
+	LogOutput * Log::stdOut() {
+		return &stdout_logoutput;
+	}
+
+	LogOutput * Log::stdErr() {
+		return &stderr_logoutput;
 	}
 
 	logstream Log::info(const std::string &source) {
