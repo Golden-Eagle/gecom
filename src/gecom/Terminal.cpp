@@ -205,16 +205,6 @@ namespace {
 				m_csbi_real = m_csbi_org;
 			}
 
-			// get new handle
-			HANDLE hpipew = HANDLE(_get_osfhandle(_fileno(m_fp)));
-
-			// security attributes
-			SECURITY_ATTRIBUTES secattr;
-			secattr.nLength = sizeof(SECURITY_ATTRIBUTES);
-			secattr.lpSecurityDescriptor = nullptr;
-			secattr.bInheritHandle = true;
-			// TODO set security attributes?
-
 		}
 
 		HANDLE eventHandle() const noexcept {
@@ -524,7 +514,6 @@ namespace {
 				return;
 			}
 			// create redirections
-			// TODO tweak pipe buffer sizes?
 			redirections.push_back(std::make_unique<Redirection>(stderr, 256));
 			redirections.push_back(std::make_unique<Redirection>(stdout, 256));
 			// start thread
