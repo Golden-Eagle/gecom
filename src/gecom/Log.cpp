@@ -32,6 +32,7 @@
 #include <cctype>
 #include <ctime>
 #include <thread>
+#include <sstream>
 
 #include "Log.hpp"
 #include "Terminal.hpp"
@@ -144,9 +145,30 @@ namespace {
 		out << std::endl;
 	}
 
+	class DebugLogOutput : public gecom::LogOutput {
+	protected:
+		virtual void writeImpl(const gecom::logmessage &msg) override;
+
+	public:
+		explicit DebugLogOutput(bool mute_ = false) : LogOutput(mute_) { }
+	};
+
+#ifdef GECOM_PLATFORM_WIN32
+	void DebugLogOutput::writeImpl(const gecom::logmessage &msg) {
+		std::ostringstream oss;
+		oss << msg << std::endl;
+		OutputDebugStringA(oss.str().c_str());
+	}
+#else
+	void DebugLogOutput::writeImpl(const gecom::logmessage &msg) { }
+#endif
+
 	// stdio log outputs
-	ConsoleLogOutput stdout_logoutput(&std::cout, true);
-	ConsoleLogOutput stderr_logoutput(&std::clog, false);
+	ConsoleLogOutput stdout_logoutput { &std::cout, true };
+	ConsoleLogOutput stderr_logoutput { &std::clog, false };
+
+	// debug log output
+	DebugLogOutput debug_logoutput { false };
 }
 
 namespace gecom {
@@ -202,6 +224,9 @@ namespace gecom {
 		msg.source = source;
 		msg.body = body;
 
+		// write to debug
+		debug_logoutput.write(msg);
+
 		// write to stdio
 		stderr_logoutput.write(msg);
 		stdout_logoutput.write(msg);
@@ -219,6 +244,10 @@ namespace gecom {
 
 	LogOutput * Log::stdErr() {
 		return &stderr_logoutput;
+	}
+
+	LogOutput * Log::debugOut() {
+		return &debug_logoutput;
 	}
 
 	logstream Log::info(const std::string &source) {

@@ -176,6 +176,9 @@ namespace gecom {
 		// stderr starts unmuted
 		static LogOutput * stdErr();
 
+		// system debug output, if available; starts unmuted
+		static LogOutput * debugOut();
+
 		static logstream info(const std::string &source = "");
 
 		static logstream warning(const std::string &source = "");
