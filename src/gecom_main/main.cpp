@@ -16,10 +16,13 @@ int main() {
 	Section sec("main");
 
 	// need to reference something from terminal.cpp to initialize redirection
-	cout << terminal::colorOff << std::endl;
+	cout << terminal::reset << std::endl;
 
 	fprintf(stdout, "<thisis:stdout>\n");
 	fflush(stdout);
+
+	cout << terminal::white << terminal::onRed;
+	cerr << terminal::white << terminal::onBlue;
 
 	for (int i = 0; i < 50; i++) {
 		cerr << "<thisis:cerr>" << endl;

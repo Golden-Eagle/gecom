@@ -1,9 +1,6 @@
 
 #include "Platform.hpp"
 
-// temp
-#define GECOM_NO_TERMCOLOR
-
 #ifdef GECOM_PLATFORM_WIN32
 #include <windows.h>
 #endif
@@ -37,151 +34,9 @@
 #include <thread>
 
 #include "Log.hpp"
+#include "Terminal.hpp"
 
 namespace gecom {
-
-	namespace termcolor {
-
-#ifdef GECOM_NO_TERMCOLOR
-		// Reset Color
-		std::ostream & reset(std::ostream &o) { return o; }
-
-		// Regular Colors
-		std::ostream & black(std::ostream &o) { return o; }
-		std::ostream & red(std::ostream &o) { return o; }
-		std::ostream & green(std::ostream &o) { return o; }
-		std::ostream & yellow(std::ostream &o) { return o; }
-		std::ostream & blue(std::ostream &o) { return o; }
-		std::ostream & purple(std::ostream &o) { return o; }
-		std::ostream & cyan(std::ostream &o) { return o; }
-		std::ostream & white(std::ostream &o) { return o; }
-
-		// Bold Colors
-		std::ostream & boldBlack(std::ostream &o) { return o; }
-		std::ostream & boldRed(std::ostream &o) { return o; }
-		std::ostream & boldGreen(std::ostream &o) { return o; }
-		std::ostream & boldYellow(std::ostream &o) { return o; }
-		std::ostream & boldBlue(std::ostream &o) { return o; }
-		std::ostream & boldPurple(std::ostream &o) { return o; }
-		std::ostream & boldCyan(std::ostream &o) { return o; }
-		std::ostream & boldWhite(std::ostream &o) { return o; }
-
-#elif defined(_WIN32)
-		// use windows console manip
-
-		namespace {
-			HANDLE hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
-			HANDLE hstderr = GetStdHandle(STD_ERROR_HANDLE);
-
-			CONSOLE_SCREEN_BUFFER_INFO *csbi_out = nullptr;
-			CONSOLE_SCREEN_BUFFER_INFO *csbi_err = nullptr;
-
-			void checkConsoleDefaultsSaved() {
-				// save the original values for reset
-				if (!csbi_out) {
-					csbi_out = new CONSOLE_SCREEN_BUFFER_INFO;
-					GetConsoleScreenBufferInfo(hstdout, csbi_out);
-				}
-				if (!csbi_err) {
-					csbi_err = new CONSOLE_SCREEN_BUFFER_INFO;
-					GetConsoleScreenBufferInfo(hstderr, csbi_err);
-				}
-			}
-
-			void resetTextAttribute(std::ostream &o) {
-				checkConsoleDefaultsSaved();
-				if (&o == &std::cout) {
-					SetConsoleTextAttribute(hstdout, csbi_out->wAttributes);
-				}
-				if (&o == &std::cerr || &o == &std::clog) {
-					SetConsoleTextAttribute(hstderr, csbi_err->wAttributes);
-				}
-			}
-
-			void setTextColor(std::ostream &o, WORD w) {
-				checkConsoleDefaultsSaved();
-				// set color, preserving current background
-				// apparently i dont need to explicitly flush before setting the color
-				if (&o == &std::cout) {
-					w = w & 0x0F;
-					CONSOLE_SCREEN_BUFFER_INFO csbi;
-					GetConsoleScreenBufferInfo(hstdout, &csbi);
-					w = (csbi.wAttributes & 0xF0) | w;
-					SetConsoleTextAttribute(hstdout, w);
-				}
-				if (&o == &std::cerr || &o == &std::clog) {
-					w = w & 0x0F;
-					CONSOLE_SCREEN_BUFFER_INFO csbi;
-					GetConsoleScreenBufferInfo(hstderr, &csbi);
-					w = (csbi.wAttributes & 0xF0) | w;
-					SetConsoleTextAttribute(hstderr, w);
-				}
-			}
-
-		}
-
-		// Reset Color
-		std::ostream & reset(std::ostream &o) { resetTextAttribute(o); return o; }
-
-		// Regular Colors
-		std::ostream & black(std::ostream &o) { setTextColor(o, 0); return o; }
-		std::ostream & red(std::ostream &o) { setTextColor(o, 4); return o; }
-		std::ostream & green(std::ostream &o) { setTextColor(o, 2); return o; }
-		std::ostream & yellow(std::ostream &o) { setTextColor(o, 6); return o; }
-		std::ostream & blue(std::ostream &o) { setTextColor(o, 1); return o; }
-		std::ostream & purple(std::ostream &o) { setTextColor(o, 5); return o; }
-		std::ostream & cyan(std::ostream &o) { setTextColor(o, 3); return o; }
-		std::ostream & white(std::ostream &o) { setTextColor(o, 7); return o; }
-
-		// Bold Colors
-		std::ostream & boldBlack(std::ostream &o) { setTextColor(o, 8); return o; }
-		std::ostream & boldRed(std::ostream &o) { setTextColor(o, 12); return o; }
-		std::ostream & boldGreen(std::ostream &o) { setTextColor(o, 10); return o; }
-		std::ostream & boldYellow(std::ostream &o) { setTextColor(o, 14); return o; }
-		std::ostream & boldBlue(std::ostream &o) { setTextColor(o, 9); return o; }
-		std::ostream & boldPurple(std::ostream &o) { setTextColor(o, 13); return o; }
-		std::ostream & boldCyan(std::ostream &o) { setTextColor(o, 11); return o; }
-		std::ostream & boldWhite(std::ostream &o) { setTextColor(o, 15); return o; }
-
-#else
-		// use unix escape codes
-		
-		namespace {
-
-			void setTextAttribute(std::ostream &o, const char *attrib) {
-				if (&o == &std::cout || &o == &std::cerr || &o == &std::clog) {
-					// only allow escape codes going to stdout/stderr
-					o << attrib;
-				}
-			}
-
-		}
-
-		// Reset Color
-		std::ostream & reset(std::ostream &o) { setTextAttribute(o, "\033[0m"); return o; }
-
-		// Regular Colors
-		std::ostream & black(std::ostream &o) { setTextAttribute(o, "\033[0;30m"); return o; }
-		std::ostream & red(std::ostream &o) { setTextAttribute(o, "\033[0;31m"); return o; }
-		std::ostream & green(std::ostream &o) { setTextAttribute(o, "\033[0;32m"); return o; }
-		std::ostream & yellow(std::ostream &o) { setTextAttribute(o, "\033[0;33m"); return o; }
-		std::ostream & blue(std::ostream &o) { setTextAttribute(o, "\033[0;34m"); return o; }
-		std::ostream & purple(std::ostream &o) { setTextAttribute(o, "\033[0;35m"); return o; }
-		std::ostream & cyan(std::ostream &o) { setTextAttribute(o, "\033[0;36m"); return o; }
-		std::ostream & white(std::ostream &o) { setTextAttribute(o, "\033[0;37m"); return o; }
-
-		// Bold Colors
-		std::ostream & boldBlack(std::ostream &o) { setTextAttribute(o, "\033[1;30m"); return o; }
-		std::ostream & boldRed(std::ostream &o) { setTextAttribute(o, "\033[1;31m"); return o; }
-		std::ostream & boldGreen(std::ostream &o) { setTextAttribute(o, "\033[1;32m"); return o; }
-		std::ostream & boldYellow(std::ostream &o) { setTextAttribute(o, "\033[1;33m"); return o; }
-		std::ostream & boldBlue(std::ostream &o) { setTextAttribute(o, "\033[1;34m"); return o; }
-		std::ostream & boldPurple(std::ostream &o) { setTextAttribute(o, "\033[1;35m"); return o; }
-		std::ostream & boldCyan(std::ostream &o) { setTextAttribute(o, "\033[1;36m"); return o; }
-		std::ostream & boldWhite(std::ostream &o) { setTextAttribute(o, "\033[1;37m"); return o; }
-#endif
-
-	}
 
 	namespace {
 		auto processID() {
@@ -284,31 +139,31 @@ namespace gecom {
 		std::ostream & (*delimcolor)(std::ostream &);
 
 		if (msg.verbosity < 2) {
-			delimcolor = termcolor::boldCyan;
+			delimcolor = terminal::boldCyan;
 			switch (msg.level) {
 			case loglevel::warning:
-				levelcolor = termcolor::boldYellow;
+				levelcolor = terminal::boldYellow;
 				break;
 			case loglevel::error:
 			case loglevel::critical:
-				levelcolor = termcolor::boldRed;
+				levelcolor = terminal::boldRed;
 				break;
 			default:
-				levelcolor = termcolor::boldGreen;
+				levelcolor = terminal::boldGreen;
 				break;
 			}
 		} else {
-			delimcolor = termcolor::cyan;
+			delimcolor = terminal::cyan;
 			switch (msg.level) {
 			case loglevel::warning:
-				levelcolor = termcolor::yellow;
+				levelcolor = terminal::yellow;
 				break;
 			case loglevel::error:
 			case loglevel::critical:
-				levelcolor = termcolor::red;
+				levelcolor = terminal::red;
 				break;
 			default:
-				levelcolor = termcolor::green;
+				levelcolor = terminal::green;
 				break;
 			}
 		}
@@ -316,11 +171,11 @@ namespace gecom {
 		// date and time
 		for (auto c : msg.time) {
 			if (std::isdigit(c)) {
-				out << termcolor::cyan << c;
+				out << terminal::cyan << c;
 			} else if (std::isalpha(c)) {
-				out << termcolor::blue << c;
+				out << terminal::blue << c;
 			} else {
-				out << termcolor::boldBlack << c;
+				out << terminal::boldBlack << c;
 			}
 		}
 		out << delimcolor << " | ";
@@ -329,16 +184,16 @@ namespace gecom {
 		out << levelcolor << msg.verbosity << delimcolor << "> " << levelcolor << std::setw(11) << msg.level;
 
 		// source
-		out << delimcolor << " [" << termcolor::reset;
+		out << delimcolor << " [" << terminal::reset;
 		out << levelcolor << ' ' << msg.source << ' ';
-		out << delimcolor << "]" << termcolor::reset;
+		out << delimcolor << "]" << terminal::reset;
 
 		// do we need to start body on new line?
 		// TODO check msg size against console width and cursor col
 		if (msg.body.find_first_of("\r\n") != std::string::npos || msg.body.size() > 50) {
 			out << '\n';
 		} else {
-			out << delimcolor << " : " << termcolor::reset;
+			out << delimcolor << " : " << terminal::reset;
 		}
 
 		// message body

@@ -20,6 +20,7 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <cctype>
 #include <vector>
 #include <thread>
 #include <atomic>
@@ -31,8 +32,61 @@
 
 namespace {
 
+	template <typename TextFunT, typename EscapeFunT>
+	char * processEscapeSequences(char *pbegin, size_t count, const TextFunT &textfun, const EscapeFunT &escapefun) {
+		// TODO deal with escape sequences larger than buffer
+		bool isescape = false;
+		char *pprev = pbegin;
+		// find and deal with escape sequences and text sequences, except for last char
+		for (char *p = pbegin; p < pbegin + count - 1; p++) {
+			if (!isescape && p[0] == '\033' && p[1] == '[') {
+				// 'escape' '[' marks start of escape sequence
+				isescape = true;
+				if (p > pprev) {
+					textfun(pprev, p - pprev);
+					pprev = p;
+				}
+			} else if (isescape && std::isalpha(*p)) {
+				// alpha char marks end of escape sequence
+				isescape = false;
+				escapefun(pprev, p - pprev + 1);
+				pprev = p + 1;
+			}
+		}
+		// remaining data
+		size_t bytesremaining = pbegin + count - pprev;
+		char *plast = pbegin + count - 1;
+		if (isescape) {
+			if (std::isalpha(*plast)) {
+				// escape sequence is actually complete
+				escapefun(pprev, bytesremaining);
+				// next write to start of buffer
+				return pbegin;
+			} else {
+				// move incomplete escape sequence to start of buffer
+				memmove(pbegin, pprev, bytesremaining);
+				// next write to end of incomplete sequence
+				return pbegin + bytesremaining;
+			}
+		} else {
+			if (*plast == '\033') {
+				// last char could be start of escape sequence
+				if (bytesremaining > 1) textfun(pprev, bytesremaining - 1);
+				// move escape to start of buffer
+				*pbegin = '\033';
+				// next write to after leading escape
+				return pbegin + 1;
+			} else {
+				// safe to write last char too
+				if (bytesremaining) textfun(pprev, bytesremaining);
+				// next write to start of buffer
+				return pbegin;
+			}
+		}
+	}
+
 #if defined(GECOM_STDIO_REDIRECT_WIN32)
-//#define GECOM_TERMINAL_ANSI
+#define GECOM_TERMINAL_ANSI
 
 	using gecom::throwLastWin32Error;
 	using gecom::win32_error;
@@ -67,6 +121,9 @@ namespace {
 		char *m_pwrite;
 		pipe_state m_state = pipe_state::connecting;
 		bool m_pendingio = false;
+		bool m_isatty = false;
+		CONSOLE_SCREEN_BUFFER_INFO m_csbi_org;
+		CONSOLE_SCREEN_BUFFER_INFO m_csbi_real;
 
 	public:
 		Redirection(const Redirection &) = delete;
@@ -143,6 +200,12 @@ namespace {
 			// reopen FILE to point to our named pipe
 			if (!freopen(m_pipename.c_str(), "w", m_fp)) {
 				throwLastWin32Error("freopen named pipe");
+			}
+
+			// get original console screen buffer info, determine if we're a console
+			if (GetConsoleScreenBufferInfo(m_hreal, &m_csbi_org)) {
+				m_isatty = true;
+				m_csbi_real = m_csbi_org;
 			}
 
 			// get new handle
@@ -283,19 +346,85 @@ namespace {
 			}
 		}
 
+		void handleText(const char *pbegin, size_t count) {
+			assert(count <= m_buf.size());
+			// if we're a console, set text attributes
+			if (m_isatty) SetConsoleTextAttribute(m_hreal, m_csbi_real.wAttributes);
+			// write text
+			DWORD byteswritten = 0;
+			// TODO this blocked on me at one point
+			if (!WriteFile(m_hreal, pbegin, DWORD(count), &byteswritten, nullptr)) {
+				throwLastWin32Error("write");
+			}
+		}
+
+		void handleEscape(const char *pbegin, size_t count) {
+			assert(count <= m_buf.size());
+			// parse escape code if we're a console
+			if (m_isatty) {
+				char esctype = *(pbegin + count - 1);
+				if (esctype = 'm') {
+					// update text attributes
+					int code = 0;
+					for (const char *p = pbegin; p < pbegin + count; p++) {
+						if (std::isdigit(*p)) {
+							code = code * 10 + *p - '0';
+						} else {
+							switch (code) {
+							case 0: // reset
+								m_csbi_real.wAttributes = m_csbi_org.wAttributes;
+								break;
+							case 1: // bold
+								m_csbi_real.wAttributes |= FOREGROUND_INTENSITY;
+								break;
+							case 4: // underscore
+								m_csbi_real.wAttributes |= COMMON_LVB_UNDERSCORE;
+								break;
+							case 7: // reverse video
+								m_csbi_real.wAttributes |= COMMON_LVB_REVERSE_VIDEO;
+							case 30: // foreground black
+							case 31: // foreground red
+							case 32: // foreground green
+							case 33: // foreground yellow
+							case 34: // foreground blue
+							case 35: // foreground magenta
+							case 36: // foreground cyan
+							case 37: // foreground white
+								m_csbi_real.wAttributes &= ~(FOREGROUND_RED | FOREGROUND_GREEN | FOREGROUND_BLUE);
+								m_csbi_real.wAttributes |= ((code - 30) & 0x1) ? FOREGROUND_RED : 0;
+								m_csbi_real.wAttributes |= ((code - 30) & 0x2) ? FOREGROUND_GREEN : 0;
+								m_csbi_real.wAttributes |= ((code - 30) & 0x4) ? FOREGROUND_BLUE : 0;
+								break;
+							case 40: // background black
+							case 41: // background red
+							case 42: // background green
+							case 43: // background yellow
+							case 44: // background blue
+							case 45: // background magenta
+							case 46: // background cyan
+							case 47: // background white
+								m_csbi_real.wAttributes &= ~(BACKGROUND_RED | BACKGROUND_GREEN | BACKGROUND_BLUE);
+								m_csbi_real.wAttributes |= ((code - 40) & 0x1) ? BACKGROUND_RED : 0;
+								m_csbi_real.wAttributes |= ((code - 40) & 0x2) ? BACKGROUND_GREEN : 0;
+								m_csbi_real.wAttributes |= ((code - 40) & 0x4) ? BACKGROUND_BLUE : 0;
+								break;
+							default:
+								break;
+							}
+							code = 0;
+						}
+					}
+				}
+			}
+		}
+
 		// don't call this while io is pending
 		void flush() {
-			// TODO parse etc
-			// write to real output
-			DWORD bytestowrite = m_pwrite - &m_buf.front();
-			DWORD byteswritten;
-			if (bytestowrite > 0) {
-				if (!WriteFile(m_hreal, &m_buf.front(), bytestowrite, &byteswritten, nullptr)) {
-					throwLastWin32Error("write");
-				}
-				FlushFileBuffers(m_hreal);
-			}
-			m_pwrite = &m_buf.front();
+			assert(!m_pendingio);
+			auto textfun = [this](const char *pbegin, size_t count) { handleText(pbegin, count); };
+			auto escapefun = [this](const char *pbegin, size_t count) { handleEscape(pbegin, count); };
+			m_pwrite = processEscapeSequences(&m_buf.front(), m_pwrite - &m_buf.front(), textfun, escapefun);
+			FlushFileBuffers(m_hreal);
 		}
 
 		bool pending() const noexcept {
@@ -448,7 +577,9 @@ namespace {
 	StdIORedirectInit stdio_redirect_init_obj;
 
 #elif defined(GECOM_STDIO_REDIRECT_POSIX)
-//#define GECOM_TERMINAL_ANSI
+#define GECOM_TERMINAL_ANSI
+
+// TODO posix-land stdio redirect
 
 #endif // GECOM_STDIO_REDIRECT_*
 
@@ -459,51 +590,63 @@ namespace gecom {
 	namespace terminal {
 
 #ifdef GECOM_TERMINAL_ANSI
-		// color off
-		std::ostream & colorOff(std::ostream &o) { o << "\033[0m"; return o; }
+		std::ostream & reset(std::ostream &o) { o << "\033[0m"; return o; }
 
-		// regular colors
 		std::ostream & black(std::ostream &o) { o << "\033[0;30m"; return o; }
 		std::ostream & red(std::ostream &o) { o << "\033[0;31m"; return o; }
 		std::ostream & green(std::ostream &o) { o << "\033[0;32m"; return o; }
 		std::ostream & yellow(std::ostream &o) { o << "\033[0;33m"; return o; }
 		std::ostream & blue(std::ostream &o) { o << "\033[0;34m"; return o; }
-		std::ostream & purple(std::ostream &o) { o << "\033[0;35m"; return o; }
+		std::ostream & magenta(std::ostream &o) { o << "\033[0;35m"; return o; }
 		std::ostream & cyan(std::ostream &o) { o << "\033[0;36m"; return o; }
 		std::ostream & white(std::ostream &o) { o << "\033[0;37m"; return o; }
 
-		// bold colors
-		std::ostream & boldBlack(std::ostream &o) { o << "\033[1;30m"; return o; }
-		std::ostream & boldRed(std::ostream &o) { o << "\033[1;31m"; return o; }
-		std::ostream & boldGreen(std::ostream &o) { o << "\033[1;32m"; return o; }
-		std::ostream & boldYellow(std::ostream &o) { o << "\033[1;33m"; return o; }
-		std::ostream & boldBlue(std::ostream &o) { o << "\033[1;34m"; return o; }
-		std::ostream & boldPurple(std::ostream &o) { o << "\033[1;35m"; return o; }
-		std::ostream & boldCyan(std::ostream &o) { o << "\033[1;36m"; return o; }
-		std::ostream & boldWhite(std::ostream &o) { o << "\033[1;37m"; return o; }
-#else
-		// color off
-		std::ostream & colorOff(std::ostream &o) { return o; }
+		std::ostream & boldBlack(std::ostream &o) { o << "\033[0;1;30m"; return o; }
+		std::ostream & boldRed(std::ostream &o) { o << "\033[0;1;31m"; return o; }
+		std::ostream & boldGreen(std::ostream &o) { o << "\033[0;1;32m"; return o; }
+		std::ostream & boldYellow(std::ostream &o) { o << "\033[0;1;33m"; return o; }
+		std::ostream & boldBlue(std::ostream &o) { o << "\033[0;1;34m"; return o; }
+		std::ostream & boldMagenta(std::ostream &o) { o << "\033[0;1;35m"; return o; }
+		std::ostream & boldCyan(std::ostream &o) { o << "\033[0;1;36m"; return o; }
+		std::ostream & boldWhite(std::ostream &o) { o << "\033[0;1;37m"; return o; }
 
-		// regular colors
+		std::ostream & onBlack(std::ostream &o) { o << "\033[40m"; return o; }
+		std::ostream & onRed(std::ostream &o) { o << "\033[41m"; return o; }
+		std::ostream & onGreen(std::ostream &o) { o << "\033[42m"; return o; }
+		std::ostream & onYellow(std::ostream &o) { o << "\033[43m"; return o; }
+		std::ostream & onBlue(std::ostream &o) { o << "\033[44m"; return o; }
+		std::ostream & onMagenta(std::ostream &o) { o << "\033[45m"; return o; }
+		std::ostream & onCyan(std::ostream &o) { o << "\033[46m"; return o; }
+		std::ostream & onWhite(std::ostream &o) { o << "\033[47m"; return o; }
+#else
+		std::ostream & reset(std::ostream &o) { return o; }
+
 		std::ostream & black(std::ostream &o) { return o; }
 		std::ostream & red(std::ostream &o) { return o; }
 		std::ostream & green(std::ostream &o) { return o; }
 		std::ostream & yellow(std::ostream &o) { return o; }
 		std::ostream & blue(std::ostream &o) { return o; }
-		std::ostream & purple(std::ostream &o) { return o; }
+		std::ostream & magenta(std::ostream &o) { return o; }
 		std::ostream & cyan(std::ostream &o) { return o; }
 		std::ostream & white(std::ostream &o) { return o; }
 
-		// bold colors
 		std::ostream & boldBlack(std::ostream &o) { return o; }
 		std::ostream & boldRed(std::ostream &o) { return o; }
 		std::ostream & boldGreen(std::ostream &o) { return o; }
 		std::ostream & boldYellow(std::ostream &o) { return o; }
 		std::ostream & boldBlue(std::ostream &o) { return o; }
-		std::ostream & boldPurple(std::ostream &o) { return o; }
+		std::ostream & boldMagenta(std::ostream &o) { return o; }
 		std::ostream & boldCyan(std::ostream &o) { return o; }
 		std::ostream & boldWhite(std::ostream &o) { return o; }
+
+		std::ostream & onBlack(std::ostream &o) { return o; }
+		std::ostream & onRed(std::ostream &o) { return o; }
+		std::ostream & onGreen(std::ostream &o) { return o; }
+		std::ostream & onYellow(std::ostream &o) { return o; }
+		std::ostream & onBlue(std::ostream &o) { return o; }
+		std::ostream & onMagenta(std::ostream &o) { return o; }
+		std::ostream & onCyan(std::ostream &o) { return o; }
+		std::ostream & onWhite(std::ostream &o) { return o; }
 #endif
 
 	}
