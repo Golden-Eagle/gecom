@@ -365,7 +365,7 @@ namespace gecom {
 	};
 
 	// handles dispatched events and forwards them to subscribers
-	class WindowEventProxy : public WindowEventDispatcher, private Uncopyable {
+	class WindowEventProxy : public WindowEventDispatcher, private util::Uncopyable {
 	public:
 		Event<window_event> onEvent;
 		Event<window_pos_event> onMove;

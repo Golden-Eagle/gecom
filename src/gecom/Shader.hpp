@@ -59,7 +59,7 @@
 #include <type_traits>
 #include <limits>
 
-#include "GECom.hpp"
+#include "Util.hpp"
 #include "GL.hpp"
 #include "Log.hpp"
 
@@ -212,7 +212,7 @@ namespace gecom {
 	public:
 		inline shader_program_spec & source(const std::string &name) {
 			// trim leading / trailing whitespace, internal is allowed
-			std::string name2 = trim(name);
+			std::string name2 = util::trim(name);
 			if (!name2.empty()) {
 				m_sources.insert(name2);
 			}
@@ -292,13 +292,13 @@ namespace gecom {
 				}
 				oss << " ";
 			}
-			out << trim(oss.str());
+			out << util::trim(oss.str());
 			return out;
 		}
 
 	};
 
-	class ShaderManager : private Uncopyable {
+	class ShaderManager : private util::Uncopyable {
 	private:
 		// shader cache entry
 		struct shader_t {
@@ -460,7 +460,7 @@ namespace gecom {
 				} else if (std::sscanf(line.c_str(), " #include \"%[^\"]\"", cbuf) > 0) {
 					// deal with #include "..."
 					// the negated charset is C99
-					std::string path_inc = cwd + trim(cbuf);
+					std::string path_inc = cwd + util::trim(cbuf);
 					shader_profile profile_inc = preprocessShader(path_inc, text_os, source_names, shader_types, log_os);
 					if (profile != profile_inc) {
 						log_os << "WARNING: \n'" << path_inc << "' (" << profile_inc
@@ -505,7 +505,7 @@ namespace gecom {
 			Section sec("ShaderMan");
 			std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
-			std::string name_stripped = trim(name);
+			std::string name_stripped = util::trim(name);
 
 			// is it already compiled?
 			for (auto it = m_shaders.cbegin(); it != m_shaders.cend(); it++) {
