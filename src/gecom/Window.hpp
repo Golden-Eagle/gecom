@@ -391,7 +391,7 @@ namespace gecom {
 		Event<char_event> onChar;
 
 		// helper method; subscribes an event dispatcher to onEvent
-		subscription subscribeEventDispatcher(std::shared_ptr<WindowEventDispatcher> proxy) {
+		subscription_ptr subscribeEventDispatcher(std::shared_ptr<WindowEventDispatcher> proxy) {
 			return onEvent.subscribe([=](const window_event &e) {
 				e.dispatch(*proxy);
 				return false;

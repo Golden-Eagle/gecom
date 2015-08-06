@@ -31,8 +31,6 @@ int main() {
 	}
 
 
-	AsyncExecutor::start();
-
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).visible(true);
 
 	win->makeContextCurrent();
@@ -65,5 +63,4 @@ int main() {
 
 	glfwTerminate();
 
-	AsyncExecutor::stop();
 }
