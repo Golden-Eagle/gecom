@@ -2,7 +2,7 @@
 # list .hpp
 set(headers
 	"Concurrent.hpp"
-	"GECom.hpp"
+	"Util.hpp"
 	"GL.hpp"
 	"Image.hpp"
 	"Initial3D.hpp"
