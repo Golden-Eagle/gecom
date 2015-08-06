@@ -2,27 +2,80 @@
 #define GECOM_CONCURRENT_HPP
 
 #include <cassert>
+#include <exception>
 #include <stdexcept>
-#include <map>
 #include <unordered_map>
 #include <vector>
 #include <deque>
-#include <functional>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
-#include <atomic>
 #include <chrono>
 #include <utility>
+#include <tuple>
+#include <functional>
+#include <future>
+#include <memory>
+#include <type_traits>
 
-#include "GECom.hpp"
+#include "Util.hpp"
 #include "Log.hpp"
 
 namespace gecom {
 	
+	// asynchronous execution services
+	namespace async {
+
+		using clock = std::chrono::steady_clock;
+
+		namespace detail {
+			void invoke(std::thread::id affinity, clock::time_point deadline, std::function<void()> taskfun);
+		}
+
+		template <typename TaskFunT, typename ...ArgTR>
+		inline auto invoke(std::thread::id affinity, clock::time_point deadline, TaskFunT &&taskfun, ArgTR &&...args) -> std::future<decltype(taskfun(args...))> {
+			// wrap function and args in non-template functor, forward to task engine, return future
+			std::promise<decltype(taskfun(args...))> p;
+			std::tuple<std::decay_t<ArgTR>...> tupargs = std::forward_as_tuple(std::forward<ArgTR>(args)...);
+			auto f = p.get_future();
+			detail::invoke(std::move(affinity), std::move(deadline),
+				[]() mutable {
+					// TODO wrap as a 'fake copyable' function?
+					// TODO call wrapped function
+					
+				}
+			);
+			return f;
+		}
+
+		template <typename TaskFunT, typename ...ArgTR>
+		inline auto invoke(std::thread::id affinity, clock::duration deadline, TaskFunT &&taskfun, ArgTR &&...args) -> std::future<decltype(taskfun(args...))> {
+			return invoke(std::move(affinity), clock::now() + deadline, std::forward<TaskFunT>(taskfun), std::forward<ArgTR>(args)...);
+		}
+
+		template <typename TaskFunT, typename ...ArgTR>
+		inline auto invoke(clock::time_point deadline, TaskFunT &&taskfun, ArgTR &&...args) -> std::future<decltype(taskfun(args...))> {
+			return invoke(std::thread::id(), std::move(deadline), std::forward<TaskFunT>(taskfun), std::forward<ArgTR>(args)...);
+		}
+
+		template <typename TaskFunT, typename ...ArgTR>
+		inline auto invoke(clock::duration deadline, TaskFunT &&taskfun, ArgTR &&...args) -> std::future<decltype(taskfun(args...))> {
+			return invoke(clock::now() + deadline, std::forward<TaskFunT>(taskfun), std::forward<ArgTR>(args)...);
+		}
+
+		void concurrency(size_t);
+
+		size_t concurrency();
+
+		void yield();
+
+		void execute(clock::duration timebudget);
+
+	}
+
 	class interruption { };
 	
-	class Subscription : private Uncopyable {
+	class Subscription : private util::Uncopyable {
 	public:
 		// test if subscription is valid (able to be manipulated)
 		virtual operator bool() = 0;
@@ -48,7 +101,7 @@ namespace gecom {
 
 	// event dispatch mechanism.
 	template <typename EventArgT>
-	class Event : private Uncopyable {
+	class Event : private util::Uncopyable {
 	public:
 		// return true to detach
 		using observer_t = std::function<bool(const EventArgT &)>;

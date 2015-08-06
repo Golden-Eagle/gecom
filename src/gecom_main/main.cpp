@@ -12,8 +12,15 @@
 using namespace gecom;
 using namespace std;
 
+using namespace std::literals;
+
 int main() {
 	Section sec("main");
+
+	// test
+	async::invoke(1s, [](int a, int b) {
+		
+	}, 1, 2);
 
 	// need to reference something from terminal.cpp to initialize redirection
 	cout << terminal::reset << std::endl;
