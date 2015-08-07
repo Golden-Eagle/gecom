@@ -13,7 +13,6 @@
 #include <chrono>
 #include <utility>
 #include <tuple>
-#include <functional>
 #include <future>
 #include <memory>
 #include <type_traits>
@@ -29,47 +28,113 @@ namespace gecom {
 		using clock = std::chrono::steady_clock;
 
 		namespace detail {
-			void invoke(std::thread::id affinity, clock::time_point deadline, std::function<void()> taskfun);
+
+			// run-once, no copy
+			class Runnable : private util::Uncopyable {
+			public:
+				virtual void run() = 0;
+				virtual ~Runnable() { }
+			};
+
+			// capture function and arguments
+			template <typename FunT, typename ...ArgTR>
+			class BasicRunnable : public Runnable {
+			private:
+				using result_t = decltype(std::declval<FunT>()(std::declval<ArgTR>()...));
+				FunT m_fun;
+				std::tuple<ArgTR...> m_args;
+				std::promise<result_t> m_promise;
+
+				template <typename ResultT, typename Dummy = void>
+				struct call_impl {
+					static void go(BasicRunnable &this_) {
+						this_.m_promise.set_value(util::call(std::move(this_.m_fun), std::move(this_.m_args)));
+					}
+				};
+
+				template <typename Dummy>
+				struct call_impl<void, Dummy> {
+					static void go(BasicRunnable &this_) {
+						util::call(std::move(this_.m_fun), std::move(this_.m_args));
+						this_.m_promise.set_value();
+					}
+				};
+
+			public:
+				template <typename ArgTupleT>
+				BasicRunnable(FunT fun_, ArgTupleT &&args) : m_fun(std::move(fun_)), m_args(std::forward<ArgTupleT>(args)) { }
+
+				auto getFuture() {
+					return m_promise.get_future();
+				}
+
+				virtual void run() override {
+					try {
+						call_impl<result_t>::go(*this);
+					} catch (...) {
+						m_promise.set_exception(std::current_exception());
+						throw;
+					}
+				}
+			};
+
+			using runnable_ptr = std::unique_ptr<Runnable>;
+
+			template <typename FunT, typename ...ArgTR>
+			auto make_runnable(FunT &&fun, ArgTR &&...args) {
+				return std::make_unique<BasicRunnable<std::decay_t<FunT &&>, std::decay_t<ArgTR &&>...>>(
+					std::forward<FunT>(fun),
+					std::forward_as_tuple(std::forward<ArgTR>(args)...)
+				);
+			}
+			
+			void invoke(std::thread::id affinity, clock::time_point deadline, runnable_ptr taskfun);
+
 		}
 
+		// invoke an affinitized task (absolute deadline)
 		template <typename TaskFunT, typename ...ArgTR>
 		inline auto invoke(std::thread::id affinity, clock::time_point deadline, TaskFunT &&taskfun, ArgTR &&...args) -> std::future<decltype(taskfun(args...))> {
 			// wrap function and args in non-template functor, forward to task engine, return future
-			std::promise<decltype(taskfun(args...))> p;
-			std::tuple<std::decay_t<ArgTR>...> tupargs = std::forward_as_tuple(std::forward<ArgTR>(args)...);
-			auto f = p.get_future();
-			detail::invoke(std::move(affinity), std::move(deadline),
-				[]() mutable {
-					// TODO wrap as a 'fake copyable' function?
-					// TODO call wrapped function
-					
-				}
-			);
+			auto r = detail::make_runnable(std::forward<TaskFunT>(taskfun), std::forward<ArgTR>(args)...);
+			auto f = r->getFuture();
+			detail::invoke(std::move(affinity), std::move(deadline), std::move(r));
 			return f;
 		}
 
+		// invoke an affinitized task (relative deadline)
 		template <typename TaskFunT, typename ...ArgTR>
 		inline auto invoke(std::thread::id affinity, clock::duration deadline, TaskFunT &&taskfun, ArgTR &&...args) -> std::future<decltype(taskfun(args...))> {
 			return invoke(std::move(affinity), clock::now() + deadline, std::forward<TaskFunT>(taskfun), std::forward<ArgTR>(args)...);
 		}
 
+		// invoke a background task (absolute deadline)
 		template <typename TaskFunT, typename ...ArgTR>
 		inline auto invoke(clock::time_point deadline, TaskFunT &&taskfun, ArgTR &&...args) -> std::future<decltype(taskfun(args...))> {
 			return invoke(std::thread::id(), std::move(deadline), std::forward<TaskFunT>(taskfun), std::forward<ArgTR>(args)...);
 		}
 
+		// invoke a background task (relative deadline)
 		template <typename TaskFunT, typename ...ArgTR>
 		inline auto invoke(clock::duration deadline, TaskFunT &&taskfun, ArgTR &&...args) -> std::future<decltype(taskfun(args...))> {
 			return invoke(clock::now() + deadline, std::forward<TaskFunT>(taskfun), std::forward<ArgTR>(args)...);
 		}
 
+		// set maximum number of concurrently scheduled background tasks.
+		// must be at least 1.
 		void concurrency(size_t);
 
+		// get maximum number of concurrently scheduled background tasks.
+		// at least 1.
 		size_t concurrency();
 
+		// allow the current background task to be descheduled in favour of a higher priority task.
+		// if not called from a background task execution thread, does nothing.
 		void yield();
 
-		void execute(clock::duration timebudget);
+		// execute tasks affinitized to the current thread until all tasks have executed or the
+		// specified time budget has lapsed
+		size_t execute(clock::duration timebudget);
 
 	}
 

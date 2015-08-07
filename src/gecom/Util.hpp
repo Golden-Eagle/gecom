@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <memory>
 #include <utility>
+#include <type_traits>
 
 #include "Initial3D.hpp"
 
@@ -58,7 +59,11 @@ namespace gecom {
 		// call a function by unpacking arguments from a tuple-like object
 		template <typename FunT, typename ArgTupleT>
 		inline decltype(auto) call(FunT &&fun, ArgTupleT &&args) {
-			return detail::call_impl(std::forward<FunT>(fun), std::forward<ArgTupleT>(args), std::make_index_sequence<std::tuple_size<ArgTupleT>::value>());
+			return detail::call_impl(
+				std::forward<FunT>(fun),
+				std::forward<ArgTupleT>(args),
+				std::make_index_sequence<std::tuple_size<std::decay_t<ArgTupleT>>::value>()
+			);
 		}
 
 	}

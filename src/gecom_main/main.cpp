@@ -17,26 +17,19 @@ using namespace std::literals;
 int main() {
 	Section sec("main");
 
-	// test
-	async::invoke(1s, [](int a, int b) {
-		
-	}, 1, 2);
-
 	// need to reference something from terminal.cpp to initialize redirection
 	cout << terminal::reset << std::endl;
 
-	fprintf(stdout, "<thisis:stdout>\n");
-	fflush(stdout);
+	// test
+	auto fut = async::invoke(1s, [](int a, int b) {
+		Log::info() << "ASYNC! : " << (a + b);
+		return a + b;
+	}, 1, 2);
 
-	cout << terminal::white << terminal::onRed;
-	cerr << terminal::white << terminal::onBlue;
+	Log::info() << "FUTURE! : " << fut.get();
 
-	for (int i = 0; i < 50; i++) {
-		cerr << "<thisis:cerr>" << endl;
-		cout << "<thisis:cout>" << endl;
-		this_thread::sleep_for(chrono::milliseconds(50));
-	}
 
+	
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).visible(true);
 
