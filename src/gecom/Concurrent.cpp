@@ -126,7 +126,7 @@ namespace gecom {
 			
 			// background task global state
 			mutex task_mutex;
-			priority_queue<task_ptr, vector<task_ptr>, task_compare> pending_tasks;
+			util::priority_queue<task_ptr, task_compare> pending_tasks;
 			vector<task_ptr> active_tasks;
 			size_t max_active_tasks = 1;
 			atomic<bool> should_exit { false };
@@ -160,23 +160,23 @@ namespace gecom {
 			void rescheduleBackground() {
 				// task_mutex assumed owned
 				// move currently active tasks to possibly active task set
-				std::priority_queue<task_ptr, std::vector<task_ptr>, task_compare> possibly_active_tasks(std::make_move_iterator(active_tasks.begin()), std::make_move_iterator(active_tasks.end()));
+				util::priority_queue<task_ptr, task_compare> possibly_active_tasks(
+					std::make_move_iterator(active_tasks.begin()),
+					std::make_move_iterator(active_tasks.end())
+				);
 				active_tasks.clear();
 				// grab more tasks from pending task queue as needed
 				while (possibly_active_tasks.size() < max_active_tasks && !pending_tasks.empty()) {
-					possibly_active_tasks.push(pending_tasks.top());
-					pending_tasks.pop();
+					possibly_active_tasks.push(pending_tasks.pop());
 				}
 				// fill active task set
 				while (active_tasks.size() < max_active_tasks && !possibly_active_tasks.empty()) {
-					active_tasks.push_back(possibly_active_tasks.top());
-					possibly_active_tasks.pop();
+					active_tasks.push_back(possibly_active_tasks.pop());
 				}
 				// throw remaining tasks back into pending task queue after suspending them
 				while (!possibly_active_tasks.empty()) {
 					possibly_active_tasks.top()->suspend();
-					pending_tasks.push(possibly_active_tasks.top());
-					possibly_active_tasks.pop();
+					pending_tasks.push(possibly_active_tasks.pop());
 				}
 				// resume all active tasks
 				for (auto &task : active_tasks) {
