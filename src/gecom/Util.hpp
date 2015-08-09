@@ -11,6 +11,7 @@
 #include <string>
 #include <algorithm>
 #include <memory>
+#include <vector>
 #include <utility>
 #include <type_traits>
 
@@ -65,6 +66,57 @@ namespace gecom {
 				std::make_index_sequence<std::tuple_size<std::decay_t<ArgTupleT>>::value>()
 			);
 		}
+
+		// priority queue with a moving pop operation
+		template <typename T, typename CompareT = std::less<T>>
+		class priority_queue {
+		private:
+			std::vector<T> m_data;
+			CompareT m_compare;
+
+		public:
+			explicit priority_queue(const CompareT &compare_ = CompareT()) : m_compare(compare_) { }
+
+			template <typename InputItT>
+			priority_queue(InputItT first_, InputItT last_, const CompareT &compare_ = CompareT()) :
+				m_data(first_, last_), m_compare(compare_)
+			{
+				std::make_heap(m_data.begin(), m_data.end(), m_compare);
+			}
+
+			priority_queue(priority_queue &&) = default;
+			priority_queue & operator=(priority_queue &&) = default;
+
+			bool empty() {
+				return m_data.empty();
+			}
+
+			size_t size() {
+				return m_data.size();
+			}
+
+			void push(T t) {
+				m_data.emplace_back(std::move(t));
+				std::push_heap(m_data.begin(), m_data.end(), m_compare);
+			}
+
+			template <typename ...ArgTR>
+			void emplace(ArgTR &&...args) {
+				m_data.emplace_back(std::forward<ArgTR>(args)...);
+				std::push_heap(m_data.begin(), m_data.end(), m_compare);
+			}
+
+			const T & top() const {
+				return m_data.front();
+			}
+
+			T pop() {
+				std::pop_heap(m_data.begin(), m_data.end(), m_compare);
+				T result = std::move(m_data.back());
+				m_data.pop_back();
+				return result;
+			}
+		};
 
 	}
 }
