@@ -27,6 +27,24 @@ namespace gecom {
 
 		using clock = std::chrono::steady_clock;
 
+		std::thread::id mainThreadId() noexcept;
+
+		// set maximum number of concurrently scheduled background tasks.
+		// must be at least 1.
+		void concurrency(size_t);
+
+		// get maximum number of concurrently scheduled background tasks.
+		// at least 1.
+		size_t concurrency() noexcept;
+
+		// allow the current background task to be descheduled in favour of a higher priority task.
+		// if not called from a background task execution thread, does nothing.
+		void yield() noexcept;
+
+		// execute tasks affinitized to the current thread until all tasks have executed or the
+		// specified time budget has lapsed. returns number of tasks executed.
+		size_t execute(clock::duration timebudget) noexcept;
+
 		namespace detail {
 
 			// run-once, no copy
@@ -120,22 +138,17 @@ namespace gecom {
 			return invoke(clock::now() + deadline, std::forward<TaskFunT>(taskfun), std::forward<ArgTR>(args)...);
 		}
 
-		// set maximum number of concurrently scheduled background tasks.
-		// must be at least 1.
-		void concurrency(size_t);
+		// invoke a task affinitized to the main thread (absolute deadline)
+		template <typename TaskFunT, typename ...ArgTR>
+		inline auto invokeMain(clock::time_point deadline, TaskFunT &&taskfun, ArgTR &&...args) -> std::future<decltype(taskfun(args...))> {
+			return invoke(mainThreadId(), std::move(deadline), std::forward<TaskFunT>(taskfun), std::forward<ArgTR>(args)...);
+		}
 
-		// get maximum number of concurrently scheduled background tasks.
-		// at least 1.
-		size_t concurrency();
-
-		// allow the current background task to be descheduled in favour of a higher priority task.
-		// if not called from a background task execution thread, does nothing.
-		void yield();
-
-		// execute tasks affinitized to the current thread until all tasks have executed or the
-		// specified time budget has lapsed
-		size_t execute(clock::duration timebudget);
-
+		// invoke a task affinitized to the main thread (relative deadline)
+		template <typename TaskFunT, typename ...ArgTR>
+		inline auto invokeMain(clock::duration deadline, TaskFunT &&taskfun, ArgTR &&...args) -> std::future<decltype(taskfun(args...))> {
+			return invokeMain(clock::now() + deadline, std::forward<TaskFunT>(taskfun), std::forward<ArgTR>(args)...);
+		}
 	}
 
 	class interruption { };

@@ -28,8 +28,17 @@ int main() {
 
 	Log::info() << "FUTURE! : " << fut.get();
 
+	std::atomic<int> c { 0 };
 
+	for (int i = 0; i < 1000; i++) {
+		async::invokeMain(1s, [&] {
+			c++;
+		});
+	}
 	
+	async::execute(1ms);
+
+	Log::info() << "dsghsfh " << c;
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).visible(true);
 

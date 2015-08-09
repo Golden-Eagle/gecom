@@ -1,6 +1,6 @@
 
 #include <vector>
-#include <queue>
+#include <unordered_map>
 
 #include "Concurrent.hpp"
 #include "Log.hpp"
@@ -78,12 +78,12 @@ namespace gecom {
 					resume();
 				}
 
-				void resume() {
+				void resume() noexcept {
 					m_should_yield = false;
 					m_resume_cond.notify_all();
 				}
 
-				void suspend() {
+				void suspend() noexcept {
 					m_should_yield = true;
 				}
 
@@ -102,7 +102,7 @@ namespace gecom {
 					Log::info() << "worker terminated";
 				}
 
-				static Worker * current() {
+				static Worker * current() noexcept {
 					return current_worker;
 				}
 
@@ -125,11 +125,15 @@ namespace gecom {
 
 			
 			// background task global state
-			mutex task_mutex;
-			util::priority_queue<task_ptr, task_compare> pending_tasks;
-			vector<task_ptr> active_tasks;
-			size_t max_active_tasks = 1;
+			mutex bg_task_mutex;
+			util::priority_queue<task_ptr, task_compare> bg_pending_tasks;
+			vector<task_ptr> bg_active_tasks;
+			size_t bg_max_active_tasks = 1;
 			atomic<bool> should_exit { false };
+
+			// thread-affinitized task global state
+			mutex ta_task_mutex;
+			unordered_map<thread::id, util::priority_queue<task_ptr, task_compare>> ta_pending_tasks;
 			
 			void Task::run() {
 				m_runnable->run();
@@ -158,45 +162,45 @@ namespace gecom {
 			}
 
 			void rescheduleBackground() {
-				// task_mutex assumed owned
+				// bg_task_mutex assumed owned
 				// move currently active tasks to possibly active task set
 				util::priority_queue<task_ptr, task_compare> possibly_active_tasks(
-					std::make_move_iterator(active_tasks.begin()),
-					std::make_move_iterator(active_tasks.end())
+					std::make_move_iterator(bg_active_tasks.begin()),
+					std::make_move_iterator(bg_active_tasks.end())
 				);
-				active_tasks.clear();
+				bg_active_tasks.clear();
 				// grab more tasks from pending task queue as needed
-				while (possibly_active_tasks.size() < max_active_tasks && !pending_tasks.empty()) {
-					possibly_active_tasks.push(pending_tasks.pop());
+				while (possibly_active_tasks.size() < bg_max_active_tasks && !bg_pending_tasks.empty()) {
+					possibly_active_tasks.push(bg_pending_tasks.pop());
 				}
 				// fill active task set
-				while (active_tasks.size() < max_active_tasks && !possibly_active_tasks.empty()) {
-					active_tasks.push_back(possibly_active_tasks.pop());
+				while (bg_active_tasks.size() < bg_max_active_tasks && !possibly_active_tasks.empty()) {
+					bg_active_tasks.push_back(possibly_active_tasks.pop());
 				}
 				// throw remaining tasks back into pending task queue after suspending them
 				while (!possibly_active_tasks.empty()) {
 					possibly_active_tasks.top()->suspend();
-					pending_tasks.push(possibly_active_tasks.pop());
+					bg_pending_tasks.push(possibly_active_tasks.pop());
 				}
 				// resume all active tasks
-				for (auto &task : active_tasks) {
+				for (auto &task : bg_active_tasks) {
 					task->resume();
 				}
 			}
 
 			void invokeBackground(task_ptr task) {
-				std::unique_lock<std::mutex> lock(task_mutex);
+				std::unique_lock<std::mutex> lock(bg_task_mutex);
 				// add task to active set (force reschedule to consider it)
-				active_tasks.push_back(std::move(task));
+				bg_active_tasks.push_back(std::move(task));
 				// ensure highest priority tasks are running
 				rescheduleBackground();
 			}
 
 			void finishBackground(task_ptr task) {
-				std::unique_lock<std::mutex> lock(task_mutex);
+				std::unique_lock<std::mutex> lock(bg_task_mutex);
 				// remove task from active list
-				auto it = std::find(active_tasks.begin(), active_tasks.end(), task);
-				if (it != active_tasks.end()) active_tasks.erase(it);
+				auto it = std::find(bg_active_tasks.begin(), bg_active_tasks.end(), task);
+				if (it != bg_active_tasks.end()) bg_active_tasks.erase(it);
 				// 'delete' task so the worker is released
 				task = nullptr;
 				// ensure highest priority tasks are running
@@ -241,10 +245,15 @@ namespace gecom {
 
 			}
 
+			void invokeAffinitized(thread::id affinity, task_ptr task) {
+				unique_lock<mutex> lock(ta_task_mutex);
+				ta_pending_tasks[affinity].push(task);
+			}
+
 			// Worker statics
 			thread_local Worker *Worker::current_worker { nullptr };
-			std::mutex Worker::pool_mutex;
-			std::vector<worker_ptr> Worker::pool;
+			mutex Worker::pool_mutex;
+			vector<worker_ptr> Worker::pool;
 
 			class AsyncInit {
 			public:
@@ -261,6 +270,8 @@ namespace gecom {
 
 			AsyncInit async_init_obj;
 
+			// id of main thread
+			thread::id main_thread_id { this_thread::get_id() };
 		}
 
 
@@ -268,27 +279,52 @@ namespace gecom {
 			if (affinity == thread::id()) {
 				invokeBackground(make_shared<Task>(move(deadline), move(taskfun)));
 			} else {
-				// TODO queue thread-specific task
+				invokeAffinitized(affinity, make_shared<Task>(move(deadline), move(taskfun)));
 			}
 		}
 
+		thread::id mainThreadId() noexcept {
+			return main_thread_id;
+		}
+
 		void concurrency(size_t x) {
-			max_active_tasks = x;
+			bg_max_active_tasks = x ? x : 1;
 		}
 
-		size_t concurrency() {
-			return max_active_tasks;
+		size_t concurrency() noexcept {
+			return bg_max_active_tasks;
 		}
 
-		void yield() {
+		void yield() noexcept {
 			if (Worker *worker = Worker::current()) {
 				worker->yield();
 			}
 		}
 
-		size_t execute(clock::duration timebudget) {
-			// TODO execute thread specific tasks
-			return 0;
+		size_t execute(clock::duration timebudget) noexcept {
+			size_t count = 0;
+			const auto time1 = clock::now() + timebudget;
+			while (clock::now() < time1) {
+				task_ptr task;
+				{
+					// lock the mutex only long enough to grab a task
+					unique_lock<mutex> lock(ta_task_mutex);
+					auto &q = ta_pending_tasks[this_thread::get_id()];
+					// quit if no tasks
+					if (q.empty()) break;
+					task = q.pop();
+				}
+				// execute task
+				try {
+					task->run();
+					count++;
+				} catch (exception &e) {
+					Log::error().verbosity(2) << "task exceptioned; what(): " << e.what();
+				} catch (...) {
+					Log::error().verbosity(2) << "task exceptioned";
+				}
+			}
+			return count;
 		}
 
 		
