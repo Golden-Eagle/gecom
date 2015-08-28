@@ -8,61 +8,61 @@
 
 namespace gecom {
 
-	class Section {
+	class section_guard {
+	private:
+		bool m_entered = false;
+		std::string m_name;
+
+	public:
+		section_guard() { }
+		
+		section_guard(std::string name_);
+
+		~section_guard();
+	};
+
+	class section {
+		friend class section_guard;
 	public:
 		using clock = std::chrono::high_resolution_clock;
 		using time_point = clock::time_point;
 
-		struct section_entry {
-			std::string name;
-			std::string path;
-			time_point time0, time1;
-		};
-
 	private:
-		const Section *m_parent = nullptr;
-		section_entry m_entry;
-
-		void enter(std::string name);
-		void exit() noexcept;
-
+		std::string m_name;
+		std::string m_path;
+		unsigned m_count = 0;
+		time_point m_time0, m_time1;
+		
 	public:
-		Section(const Section &) = delete;
-		Section & operator=(const Section &) = delete;
+		section(std::string name_, std::string path_) : m_name(name_), m_path(path_) { }
 
-		Section(std::string name_) {
-			enter(std::move(name_));
-		}
+		section(const section &) = delete;
+		section & operator=(const section &) = delete;
 
+		section(section &&) = default;
+		section & operator=(section &&) = default;
+		
 		const std::string & name() const {
-			return m_entry.name;
+			return m_name;
 		}
 
 		const std::string & path() const {
-			return m_entry.path;
+			return m_path;
 		}
 
-		const section_entry & entry() const {
-			return m_entry;
+		unsigned count() const {
+			return m_count;
 		}
 
-		const Section * parent() const noexcept {
-			return m_parent;
+		const time_point & time0() const {
+			return m_time0;
 		}
 
-		const Section * root() const noexcept {
-			const Section *r = this;
-			while (const Section *p = r->parent()) {
-				r = p;
-			}
-			return r;
+		const time_point & time1() const {
+			return m_time1;
 		}
 
-		~Section() {
-			exit();
-		}
-
-		static const Section * current() noexcept;
+		static const section * current() noexcept;
 
 		static bool threadProfiling();
 		static void threadProfiling(bool);

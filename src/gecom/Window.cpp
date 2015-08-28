@@ -421,7 +421,7 @@ namespace gecom {
 	}
 
 	void Window::makeContextCurrent() {
-		Section sec("Window");
+		section_guard sec("Window");
 		glfwMakeContextCurrent(m_handle);
 		WindowData *wd = getWindowData(m_handle);
 		// init glaer
@@ -488,7 +488,7 @@ namespace gecom {
 
 	// this should only be called from the main thread
 	create_window_args::operator Window * () {
-		Section sec("Window");
+		section_guard sec("Window");
 		Log::info().verbosity(0) << "Creating window... [title=" << m_title << "]";
 		if (m_hints[GLFW_OPENGL_DEBUG_CONTEXT]) {
 			Log::info().verbosity(0) << "Requesting debug GL context";

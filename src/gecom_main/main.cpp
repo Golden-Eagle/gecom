@@ -15,7 +15,7 @@ using namespace std;
 using namespace std::literals;
 
 int main() {
-	Section sec("main");
+	section_guard sec("main");
 
 	// need to reference something from terminal.cpp to initialize redirection
 	cout << terminal::reset << std::endl;
@@ -45,19 +45,19 @@ int main() {
 	win->makeContextCurrent();
 
 	{
-		Section sec("foo");
+		section_guard sec("foo");
 		Log::warning() << "this is a warning";
 		{
-			Section sec("foo");
+			section_guard sec("foo");
 			Log::warning() << "this is still a warning";
 			{
-				Section sec("foo");
+				section_guard sec("foo");
 				Log::warning() << "this is just a warning";
 				{
-					Section sec("foo");
+					section_guard sec("foo");
 					Log::warning() << "this used to be a warning, but we can't afford them anymore";
 					{
-						Section sec("bar");
+						section_guard sec("bar");
 						Log::error() << "this is an error, fix it";
 					}
 				}

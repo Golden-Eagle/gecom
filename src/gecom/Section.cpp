@@ -1,67 +1,86 @@
 
+#include <cassert>
 #include <atomic>
+#include <vector>
+#include <memory>
 
 #include "Section.hpp"
 
 namespace {
 	std::atomic<bool> default_profiling { false };
 	thread_local bool thread_profiling { default_profiling };
-	thread_local const gecom::Section *current_section = nullptr;
 
-	void sectionPath(std::string &path, const gecom::Section *s) {
-		if (const gecom::Section *p = s->parent()) {
-			sectionPath(path, p);
-			if (p->name() == s->name()) {
-				// recursive entry, abbreviate path
-				path += '*';
-				return;
-			} else {
-				path += '/';
-			}
+	// this does not get leaked if sections are used correctly
+	thread_local std::vector<gecom::section> *sections = nullptr;
+
+	std::string currentPath() {
+		std::string r;
+		if (!sections) return r;
+		for (const auto &s : *sections) {
+			r += s.name();
+			r += '/';
 		}
-		path += s->name();
+		return r;
 	}
 }
 
 namespace gecom {
 
-	void Section::enter(std::string name) {
-		m_parent = current_section;
-		m_entry.name = name;
-		m_entry.path.clear();
-		sectionPath(m_entry.path, this);
-		if (thread_profiling) {
-			m_entry.time0 = clock::now();
-			// TODO call to profiler?
+	section_guard::section_guard(std::string name_) : m_entered(false), m_name(std::move(name_)) {
+		if (!sections) {
+			sections = new std::vector<section>();
 		}
-		current_section = this;
-	}
-
-	void Section::exit() noexcept {
-		current_section = m_parent;
-		if (thread_profiling) {
-			m_entry.time1 = clock::now();
-			// TODO call to profiler?
+		if (sections->empty() || sections->back().name() != m_name) {
+			std::string path = currentPath();
+			path += m_name;
+			path += '/';
+			sections->push_back({ m_name, std::move(path) });
+			if (thread_profiling) {
+				sections->back().m_time0 = section::clock::now();
+				// TODO call to profiler?
+			}
 		}
+		m_entered = true;
+		assert(!sections->empty());
+		++sections->back().m_count;
 	}
 
-	const Section * Section::current() noexcept {
-		return current_section;
+	section_guard::~section_guard() {
+		if (m_entered) {
+			assert(!sections->empty());
+			assert(sections->back().name() == m_name);
+			if (--sections->back().m_count == 0) {
+				if (thread_profiling) {
+					sections->back().m_time1 = section::clock::now();
+					// TODO call to profiler?
+				}
+				sections->pop_back();
+			}
+			if (sections->empty()) {
+				delete sections;
+				sections = nullptr;
+			}
+		}
+		
 	}
 
-	bool Section::threadProfiling() {
+	const section * section::current() noexcept {
+		return sections->empty() ? nullptr : &sections->back();
+	}
+
+	bool section::threadProfiling() {
 		return thread_profiling;
 	}
 
-	void Section::threadProfiling(bool b) {
+	void section::threadProfiling(bool b) {
 		thread_profiling = b;
 	}
 
-	bool Section::defaultProfiling() {
+	bool section::defaultProfiling() {
 		return default_profiling;
 	}
 
-	void Section::defaultProfiling(bool b) {
+	void section::defaultProfiling(bool b) {
 		default_profiling = b;
 	}
 

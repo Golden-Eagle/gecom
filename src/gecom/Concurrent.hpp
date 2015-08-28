@@ -335,7 +335,7 @@ namespace gecom {
 		// TODO timed wait etc
 
 		virtual ~Event() {
-			Section sec("Event");
+			section_guard sec("Event");
 			// clear the observer registry to release memory
 			{
 				std::unique_lock<std::mutex> lock(m_registry->mutex);

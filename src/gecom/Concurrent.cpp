@@ -65,7 +65,7 @@ namespace gecom {
 
 			public:
 				Worker() {
-					Section sec("async");
+					section_guard sec("async");
 					Log::info() << "worker starting...";
 					// must start thread after constructing other fields
 					m_thread = thread(run, this);
@@ -95,7 +95,7 @@ namespace gecom {
 				}
 
 				~Worker() {
-					Section sec("async");
+					section_guard sec("async");
 					// wake up the thread so it can exit
 					m_resume_cond.notify_all();
 					m_thread.join();
@@ -208,7 +208,7 @@ namespace gecom {
 			}
 			
 			void Worker::run(Worker *this_) {
-				Section sec("async");
+				section_guard sec("async");
 
 				Log::info() << "worker started";
 

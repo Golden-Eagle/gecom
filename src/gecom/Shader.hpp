@@ -88,7 +88,7 @@ namespace gecom {
 	};
 
 	inline void printShaderInfoLog(GLuint obj, bool error = false) {
-		Section sec("ShaderMan");
+		section_guard sec("ShaderMan");
 		int infologLength = 0;
 		int charsWritten = 0;
 		glGetShaderiv(obj, GL_INFO_LOG_LENGTH, &infologLength);
@@ -105,7 +105,7 @@ namespace gecom {
 	}
 
 	inline void printProgramInfoLog(GLuint obj, bool error = false) {
-		Section sec("ShaderMan");
+		section_guard sec("ShaderMan");
 		int infologLength = 0;
 		int charsWritten  = 0;
 		glGetProgramiv(obj, GL_INFO_LOG_LENGTH, &infologLength);
@@ -150,7 +150,7 @@ namespace gecom {
 	}
 
 	inline GLuint compileShaderFromFile(GLenum type, const std::string &path) {
-		Section sec("ShaderMan");
+		section_guard sec("ShaderMan");
 		std::ifstream ifs(path.c_str());
 		if (!ifs.good()) {
 			std::string msg = "Error opening shader source '";
@@ -502,7 +502,7 @@ namespace gecom {
 
 		// compile shader or return cached shader id
 		inline GLuint shader(GLenum type, const std::string &name, const std::map<std::string, std::string> &definitions, bool force_type = false) {
-			Section sec("ShaderMan");
+			section_guard sec("ShaderMan");
 			std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
 			std::string name_stripped = util::trim(name);
@@ -595,7 +595,7 @@ namespace gecom {
 
 		// compile shader program or return cached program id
 		inline GLuint program(const shader_program_spec &spec) {
-			Section sec("ShaderMan");
+			section_guard sec("ShaderMan");
 			std::lock_guard<std::recursive_mutex> lock(m_mutex);
 
 			// is it cached in the spec object?

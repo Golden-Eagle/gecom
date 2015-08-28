@@ -254,7 +254,7 @@ namespace gecom {
 		std::ostringstream fullsource;
 		fullsource << processID() << '/';
 		fullsource << std::this_thread::get_id() << '/';
-		if (const Section *sec = Section::current()) {
+		if (const section *sec = section::current()) {
 			fullsource << sec->path();
 		}
 		if (!source.empty()) {
