@@ -277,10 +277,10 @@ namespace gecom {
 		// the observer will be removed when the returned subscription is destroyed or
 		// has cancel() otherwise called on it, when the event is destroyed,
 		// or when the observer returns true, whichever is first.
-		subscription_ptr subscribe(const observer_t &func) {
+		subscription_ptr subscribe(observer_t func) {
 			std::unique_lock<std::mutex> lock(m_registry->mutex);
 			unsigned key = m_registry->next_key++;
-			m_registry->observers[key] = std::make_pair(true, func);
+			m_registry->observers[key] = std::make_pair(true, std::move(func));
 			return std::make_unique<EventSubscription>(m_registry, key);
 		}
 
