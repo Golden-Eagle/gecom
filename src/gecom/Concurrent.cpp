@@ -4,6 +4,7 @@
 
 #include "Concurrent.hpp"
 #include "Log.hpp"
+#include "Util.hpp"
 
 using namespace std;
 using namespace gecom;

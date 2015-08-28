@@ -20,6 +20,7 @@
 #include "Shader.hpp"
 #include "Log.hpp"
 #include "Concurrent.hpp"
+#include "Uncopyable.hpp"
 
 namespace gecom {
 
@@ -365,7 +366,7 @@ namespace gecom {
 	};
 
 	// handles dispatched events and forwards them to subscribers
-	class WindowEventProxy : public WindowEventDispatcher, private util::Uncopyable {
+	class WindowEventProxy : public WindowEventDispatcher, private Uncopyable {
 	public:
 		Event<window_event> onEvent;
 		Event<window_pos_event> onMove;

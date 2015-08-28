@@ -15,6 +15,7 @@ set(headers
 	"Profiler.hpp"
 	"Terminal.hpp"
 	"Platform.hpp"
+	"Uncopyable.hpp"
 )
 
 # list .cpp

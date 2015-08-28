@@ -24,15 +24,6 @@ namespace gecom {
 	
 	namespace util {
 
-		// inherit (privately) from this to default-delete copy and move ops
-		class Uncopyable {
-		private:
-			Uncopyable(const Uncopyable &rhs) = delete;
-			Uncopyable & operator=(const Uncopyable &rhs) = delete;
-		protected:
-			Uncopyable() { }
-		};
-	
 		// trim leading and trailing whitespace
 		inline std::string trim(const std::string &s) {
 			auto wsfront = std::find_if_not(s.begin(), s.end(), [](int c) { return std::isspace(c); });

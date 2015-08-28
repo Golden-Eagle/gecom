@@ -17,8 +17,8 @@
 #include <memory>
 #include <type_traits>
 
-#include "Util.hpp"
 #include "Log.hpp"
+#include "Uncopyable.hpp"
 
 namespace gecom {
 	
@@ -48,7 +48,7 @@ namespace gecom {
 		namespace detail {
 
 			// run-once, no copy
-			class Runnable : private util::Uncopyable {
+			class Runnable : private Uncopyable {
 			public:
 				virtual void run() = 0;
 				virtual ~Runnable() { }
@@ -153,7 +153,7 @@ namespace gecom {
 
 	class interruption { };
 	
-	class Subscription : private util::Uncopyable {
+	class Subscription : private Uncopyable {
 	public:
 		// test if subscription is valid (able to be manipulated)
 		virtual operator bool() = 0;
@@ -179,7 +179,7 @@ namespace gecom {
 
 	// event dispatch mechanism.
 	template <typename EventArgT>
-	class Event : private util::Uncopyable {
+	class Event : private Uncopyable {
 	public:
 		// return true to detach
 		using observer_t = std::function<bool(const EventArgT &)>;

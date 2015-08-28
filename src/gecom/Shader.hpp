@@ -60,6 +60,7 @@
 #include <limits>
 
 #include "Util.hpp"
+#include "Uncopyable.hpp"
 #include "GL.hpp"
 #include "Log.hpp"
 
@@ -298,7 +299,7 @@ namespace gecom {
 
 	};
 
-	class ShaderManager : private util::Uncopyable {
+	class ShaderManager : private Uncopyable {
 	private:
 		// shader cache entry
 		struct shader_t {
