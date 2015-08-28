@@ -15,6 +15,7 @@
 #include <map>
 #include <memory>
 #include <utility>
+#include <bitset>
 
 #include "GL.hpp"
 #include "Shader.hpp"
@@ -224,7 +225,8 @@ namespace gecom {
 	struct window_refresh_event;
 	struct window_close_event;
 	struct window_pos_event;
-	struct window_size_event; 
+	struct window_size_event;
+	struct window_framebuffer_size_event;
 	struct window_focus_event;
 	struct window_icon_event;
 	struct mouse_event;
@@ -240,6 +242,7 @@ namespace gecom {
 		virtual void dispatchWindowCloseEvent(const window_close_event &) { }
 		virtual void dispatchWindowPosEvent(const window_pos_event &) { }
 		virtual void dispatchWindowSizeEvent(const window_size_event &) { }
+		virtual void dispatchWindowFramebufferSizeEvent(const window_framebuffer_size_event &) { }
 		virtual void dispatchWindowFocusEvent(const window_focus_event &) { }
 		virtual void dispatchWindowIconEvent(const window_icon_event &) { }
 		virtual void dispatchMouseEvent(const mouse_event &) { }
@@ -292,6 +295,15 @@ namespace gecom {
 
 		virtual void dispatch(WindowEventDispatcher &wed) const override {
 			wed.dispatchWindowSizeEvent(*this);
+		}
+	};
+
+	// window framebuffer size changed
+	struct window_framebuffer_size_event : public window_event {
+		size2i size;
+
+		virtual void dispatch(WindowEventDispatcher &wed) const override {
+			wed.dispatchWindowFramebufferSizeEvent(*this);
 		}
 	};
 
@@ -367,18 +379,23 @@ namespace gecom {
 
 	// handles dispatched events and forwards them to subscribers
 	class WindowEventProxy : public WindowEventDispatcher, private Uncopyable {
+	protected:
+		std::bitset<GLFW_KEY_LAST + 1> m_keystates;
+		std::bitset<GLFW_MOUSE_BUTTON_LAST + 1> m_buttonstates;
+
 	public:
 		Event<window_event> onEvent;
 		Event<window_pos_event> onMove;
 		Event<window_size_event> onResize;
+		Event<window_framebuffer_size_event> onResizeFramebuffer;
 		Event<window_refresh_event> onRefresh;
 		Event<window_close_event> onClose;
 		Event<window_focus_event> onFocus;
 		Event<window_focus_event> onFocusGain;
 		Event<window_focus_event> onFocusLose;
 		Event<window_icon_event> onIcon;
-		Event<window_icon_event> onMinimize;
-		Event<window_icon_event> onRestore;
+		Event<window_icon_event> onIconMinimize;
+		Event<window_icon_event> onIconRestore;
 		Event<mouse_button_event> onMouseButton;
 		Event<mouse_button_event> onMouseButtonPress;
 		Event<mouse_button_event> onMouseButtonRelease;
@@ -393,7 +410,7 @@ namespace gecom {
 
 		// helper method; subscribes an event dispatcher to onEvent
 		subscription_ptr subscribeEventDispatcher(std::shared_ptr<WindowEventDispatcher> proxy) {
-			return onEvent.subscribe([=](const window_event &e) {
+			return onEvent.subscribe([proxy = std::move(proxy)](const window_event &e) {
 				e.dispatch(*proxy);
 				return false;
 			});
@@ -410,6 +427,26 @@ namespace gecom {
 		virtual void dispatchMouseScrollEvent(const mouse_scroll_event &) override;
 		virtual void dispatchKeyEvent(const key_event &) override;
 		virtual void dispatchCharEvent(const char_event &) override;
+
+		bool getKey(unsigned k) {
+			return m_keystates.test(k);
+		}
+
+		bool clearKey(unsigned k) {
+			bool r = m_keystates.test(k);
+			m_keystates.reset(k);
+			return r;
+		}
+
+		bool getButton(unsigned b) {
+			return m_buttonstates.test(b);
+		}
+
+		bool clearButton(unsigned b) {
+			bool r = m_buttonstates.test(b);
+			m_buttonstates.reset(b);
+			return r;
+		}
 	};
 
 
@@ -435,10 +472,11 @@ namespace gecom {
 		// ctor: takes ownership of a GLFW window handle
 		Window(GLFWwindow *handle_, const Window *share = nullptr) : m_handle(handle_) {
 			if (m_handle == nullptr) throw window_error("GLFW window handle is null");
+			(void) share;
 			if (share) {
-				m_shaderman = share->shaderManager();
+				//m_shaderman = share->shaderManager();
 			} else {
-				m_shaderman = std::make_shared<ShaderManager>(".");
+				//m_shaderman = std::make_shared<ShaderManager>(".");
 			}
 			initialize();
 		}
@@ -475,6 +513,11 @@ namespace gecom {
 			return s;
 		}
 
+		size2i framebufferSize() const {
+			size2i s;
+			glfwGetFramebufferSize(m_handle, &s.w, &s.h);
+		}
+
 		void width(int w) {
 			size2i s = size();
 			s.w = w;
@@ -487,6 +530,12 @@ namespace gecom {
 			return w;
 		}
 
+		int framebufferWidth() const {
+			int w, h;
+			glfwGetFramebufferSize(m_handle, &w, &h);
+			return w;
+		}
+
 		void height(int h) {
 			size2i s = size();
 			s.h = h;
@@ -496,6 +545,12 @@ namespace gecom {
 		int height() const {
 			int w, h;
 			glfwGetWindowSize(m_handle, &w, &h);
+			return h;
+		}
+
+		int framebufferHeight() const {
+			int w, h;
+			glfwGetFramebufferSize(m_handle, &w, &h);
 			return h;
 		}
 
@@ -515,7 +570,7 @@ namespace gecom {
 			return glfwWindowShouldClose(m_handle);
 		}
 
-		void makeContextCurrent();
+		void makeCurrent();
 
 		void swapBuffers() const {
 			glfwSwapBuffers(m_handle);
@@ -532,28 +587,16 @@ namespace gecom {
 			return m_shaderman;
 		}
 
-		// get current state of a key
-		bool getKey(int key);
-
-		// get current state of a key, then clear it
-		bool pollKey(int key);
-
-		// get the current state of a mouse button
-		bool getMouseButton(int button);
-
-		// get the current state of a mouse button, then clear it
-		bool pollMouseButton(int button);
-
 		// windows must only be destroyed from the main thread
 		~Window() {
 			destroy();
 		}
 
-		static Window * currentContext();
+		static Window * current();
 	};
 
 	inline void window_event::dispatchOrigin() const {
-		// inheritance of Window from WindowEventDispatcher is not known until after definition on Window
+		// inheritance of Window from WindowEventDispatcher is not known until after definition of Window
 		dispatch(*window);
 	}
 

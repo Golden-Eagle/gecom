@@ -1,7 +1,7 @@
+
 #include <cassert>
 #include <cstdlib>
 #include <map>
-#include <bitset>
 #include <sstream>
 
 #include "Window.hpp"
@@ -16,8 +16,6 @@ namespace gecom {
 			Window *window;
 			GlaerContext context;
 			bool init_done = false;
-			std::bitset<GLFW_KEY_LAST + 1> vk;
-			std::bitset<GLFW_MOUSE_BUTTON_LAST + 1> mb;
 			WindowData(Window *window_) : window(window_) { }
 		};
 
@@ -61,11 +59,6 @@ namespace gecom {
 
 		void callbackWindowFocus(GLFWwindow *handle, int focused) {
 			WindowData *wd = getWindowData(handle);
-			if (!focused) {
-				// lost focus, release all keys and buttons
-				wd->vk.reset();
-				wd->mb.reset();
-			}
 			window_focus_event e;
 			e.window = wd->window;
 			e.focused = focused;
@@ -81,20 +74,16 @@ namespace gecom {
 		}
 
 		void callbackFramebufferSize(GLFWwindow *handle, int w, int h) {
-			(void) handle;
-			(void) w;
-			(void) h;
-			// TODO
+			Window *win = getWindow(handle);
+			window_framebuffer_size_event e;
+			e.window = win;
+			e.size.w = w;
+			e.size.h = h;
+			e.dispatchOrigin();
 		}
 
 		void callbackMouseButton(GLFWwindow *handle, int button, int action, int mods) {
-			// i dont think mouse buttons get repeats, but whatever
 			WindowData *wd = getWindowData(handle);
-			if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-				wd->mb.set(button, true);
-			} else {
-				wd->mb.set(button, false);
-			}
 			mouse_button_event e;
 			e.window = wd->window;
 			e.button = button;
@@ -139,11 +128,6 @@ namespace gecom {
 
 		void callbackKey(GLFWwindow *handle, int key, int scancode, int action, int mods) {
 			WindowData *wd = getWindowData(handle);
-			if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-				wd->vk.set(key, true);
-			} else {
-				wd->vk.set(key, false);
-			}
 			key_event e;
 			e.window = wd->window;
 			e.key = key;
@@ -336,6 +320,9 @@ namespace gecom {
 		if (e.focused) {
 			onFocusGain.notify(e);
 		} else {
+			// lost focus, release all keys and buttons
+			m_keystates.reset();
+			m_buttonstates.reset();
 			onFocusLose.notify(e);
 		}
 	}
@@ -344,9 +331,9 @@ namespace gecom {
 		onEvent.notify(e);
 		onIcon.notify(e);
 		if (e.iconified) {
-			onMinimize.notify(e);
+			onIconMinimize.notify(e);
 		} else {
-			onRestore.notify(e);
+			onIconRestore.notify(e);
 		}
 	}
 
@@ -360,9 +347,12 @@ namespace gecom {
 	void WindowEventProxy::dispatchMouseButtonEvent(const mouse_button_event &e) {
 		onEvent.notify(e);
 		onMouseButton.notify(e);
+		// i dont think mouse buttons get repeats, but whatever
 		if (e.action == GLFW_PRESS || e.action == GLFW_REPEAT) {
+			m_buttonstates.set(e.button);
 			onMouseButtonPress.notify(e);
 		} else if (e.action == GLFW_RELEASE) {
+			m_buttonstates.reset(e.button);
 			onMouseButtonRelease.notify(e);
 		}
 	}
@@ -376,8 +366,10 @@ namespace gecom {
 		onEvent.notify(e);
 		onKey.notify(e);
 		if (e.action == GLFW_PRESS || e.action == GLFW_REPEAT) {
+			m_keystates.set(e.key);
 			onKeyPress.notify(e);
 		} else if (e.action == GLFW_RELEASE) {
+			m_keystates.reset(e.key);
 			onKeyRelease.notify(e);
 		}
 	}
@@ -420,7 +412,7 @@ namespace gecom {
 		glfwDestroyWindow(m_handle);
 	}
 
-	void Window::makeContextCurrent() {
+	void Window::makeCurrent() {
 		section_guard sec("Window");
 		glfwMakeContextCurrent(m_handle);
 		WindowData *wd = getWindowData(m_handle);
@@ -440,8 +432,10 @@ namespace gecom {
 				Log::info() << "GLAER initialization left GL error " << gl_err;
 				gl_err = glGetError();
 			}
-			//gecom::log("Window") << "GL Error: " << gluErrorString(gl_err);
-			Log::info() << "GL version string: " << glGetString(GL_VERSION);
+			Log::info() << "GL_VENDOR: " << glGetString(GL_VENDOR);
+			Log::info() << "GL_RENDERER " << glGetString(GL_RENDERER);
+			Log::info() << "GL_VERSION: " << glGetString(GL_VERSION);
+			Log::info() << "GL_SHADING_LANGUAGE_VERSION: " << glGetString(GL_SHADING_LANGUAGE_VERSION);
 			Log::info().verbosity(0) << "GLAER initialized";
 			wd->init_done = true;
 			// enable GL_ARB_debug_output if available
@@ -449,38 +443,16 @@ namespace gecom {
 				// this allows the error location to be determined from a stacktrace
 				glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
 				// set the callback
-				glDebugMessageCallback(callbackDebugGL, this);
-				glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, true);
+				glDebugMessageCallbackARB(callbackDebugGL, this);
+				glDebugMessageControlARB(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, true);
 				Log::info() << "GL debug callback installed";
 			} else {
 				Log::info() << "GL_ARB_debug_output not available";
 			}
 		}
 	}
-
-	bool Window::getKey(int key) {
-		return getWindowData(m_handle)->vk.test(key);
-	}
-
-	bool Window::pollKey(int key) {
-		WindowData *wd = getWindowData(m_handle);
-		bool b = wd->vk.test(key);
-		wd->vk.reset(key);
-		return b;
-	}
-
-	bool Window::getMouseButton(int button) {
-		return getWindowData(m_handle)->mb.test(button);
-	}
-
-	bool Window::pollMouseButton(int button) {
-		WindowData *wd = getWindowData(m_handle);
-		bool b = wd->mb.test(button);
-		wd->mb.reset(button);
-		return b;
-	}
-
-	Window * Window::currentContext() {
+	
+	Window * Window::current() {
 		GLFWwindow *handle = glfwGetCurrentContext();
 		if (handle == nullptr) return nullptr;
 		return getWindow(handle);

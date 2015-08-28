@@ -42,7 +42,7 @@ int main() {
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).visible(true);
 
-	win->makeContextCurrent();
+	win->makeCurrent();
 
 	{
 		section_guard sec("foo");
@@ -67,6 +67,9 @@ int main() {
 
 	while (!win->shouldClose()) {
 		glfwPollEvents();
+		if (win->getKey(GLFW_KEY_SPACE)) {
+			Log::info() << "SPACEBAR!!!";
+		}
 		win->swapBuffers();
 	}
 
