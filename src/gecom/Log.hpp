@@ -258,6 +258,12 @@ namespace gecom {
 			return *this;
 		}
 
+		// set verbosity as default verbosity for a loglevel
+		basic_logstream & verbosity(loglevel l) {
+			m_verbosity = Log::defaultVerbosity(l);
+			return *this;
+		}
+
 		~basic_logstream() {
 			if (m_write) {
 				Log::write(m_verbosity, m_level, m_source, m_buf.str());
