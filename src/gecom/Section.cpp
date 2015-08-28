@@ -65,7 +65,7 @@ namespace gecom {
 	}
 
 	const section * section::current() noexcept {
-		return sections->empty() ? nullptr : &sections->back();
+		return sections ? (sections->empty() ? nullptr : &sections->back()) : nullptr;
 	}
 
 	bool section::threadProfiling() {
