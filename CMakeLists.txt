@@ -5,6 +5,8 @@ cmake_minimum_required(VERSION 3.1)
 
 project("GECOM" CXX C)
 
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+
 # enable IDE project folders
 SET_PROPERTY(GLOBAL PROPERTY USE_FOLDERS ON)
 
@@ -15,7 +17,7 @@ add_subdirectory("${PROJECT_SOURCE_DIR}/ext/glfw-latest")
 add_subdirectory("${PROJECT_SOURCE_DIR}/ext/glaer")
 
 # Set GECOM default compile options
-include(CompileOptions.cmake)
+include(GEComCompileOptions)
 gecom_add_default_compile_options()
 
 # gecom lib target
