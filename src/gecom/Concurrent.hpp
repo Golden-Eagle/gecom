@@ -171,7 +171,7 @@ namespace gecom {
 		virtual void forever() = 0;
 
 		// destroy subscription; cancels if valid
-		virtual ~Subscription() { cancel(); }
+		virtual ~Subscription() { }
 	};
 
 	using subscription_ptr = std::unique_ptr<Subscription>;
@@ -267,7 +267,9 @@ namespace gecom {
 				m_wpreg.reset();
 			}
 
-			virtual ~EventSubscription() { }
+			virtual ~EventSubscription() {
+				cancel();
+			}
 		};
 
 	public:
