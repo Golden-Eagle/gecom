@@ -42,6 +42,8 @@ int main() {
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).contextVersion(4, 1).visible(true);
 
+	Log::info("TEST") << "test...";
+
 	win->makeCurrent();
 
 	{

@@ -258,7 +258,6 @@ namespace gecom {
 			fullsource << sec->path();
 		}
 		if (!source.empty()) {
-			fullsource << '/';
 			fullsource << source;
 		}
 		return logstream(fullsource.str());
