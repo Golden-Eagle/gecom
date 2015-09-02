@@ -40,7 +40,7 @@ int main() {
 
 	Log::info() << "dsghsfh " << c;
 
-	gecom::Window *win = createWindow().title("Hello World").size(640, 480).visible(true);
+	gecom::Window *win = createWindow().title("Hello World").size(640, 480).contextVersion(4, 1).visible(true);
 
 	win->makeCurrent();
 
