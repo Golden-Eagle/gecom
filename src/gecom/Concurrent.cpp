@@ -66,8 +66,8 @@ namespace gecom {
 
 			public:
 				Worker() {
-					section_guard sec("async");
-					Log::info() << "worker starting...";
+					section_guard sec("Async");
+					Log::info() << "Worker starting...";
 					// must start thread after constructing other fields
 					m_thread = thread(run, this);
 				}
@@ -96,11 +96,11 @@ namespace gecom {
 				}
 
 				~Worker() {
-					section_guard sec("async");
+					section_guard sec("Async");
 					// wake up the thread so it can exit
 					m_resume_cond.notify_all();
 					m_thread.join();
-					Log::info() << "worker terminated";
+					Log::info() << "Worker terminated";
 				}
 
 				static Worker * current() noexcept {
@@ -209,9 +209,9 @@ namespace gecom {
 			}
 			
 			void Worker::run(Worker *this_) {
-				section_guard sec("async");
+				section_guard sec("Async");
 
-				Log::info() << "worker started";
+				Log::info() << "Worker started";
 
 				// allow yield to find this worker
 				current_worker = this_;
@@ -234,9 +234,9 @@ namespace gecom {
 					try {
 						task->run();
 					} catch (exception &e) {
-						Log::error().verbosity(2) << "task exceptioned; what(): " << e.what();
+						Log::error().verbosity(2) << "Task exceptioned; what(): " << e.what();
 					} catch (...) {
-						Log::error().verbosity(2) << "task exceptioned";
+						Log::error().verbosity(2) << "Task exceptioned";
 					}
 
 					// cleanup after task (possibly schedule another task to this worker)
@@ -320,9 +320,9 @@ namespace gecom {
 					task->run();
 					count++;
 				} catch (exception &e) {
-					Log::error().verbosity(2) << "task exceptioned; what(): " << e.what();
+					Log::error().verbosity(2) << "Task exceptioned; what(): " << e.what();
 				} catch (...) {
-					Log::error().verbosity(2) << "task exceptioned";
+					Log::error().verbosity(2) << "Task exceptioned";
 				}
 			}
 			return count;
