@@ -447,8 +447,6 @@ namespace gecom {
 		// init glaer
 		if (!wd->init_done) {
 			Log::info() << "GLAER initializing...";
-			//GLenum t_err = glGetError();
-			//gecom::log("Window") << "GLEW t_err: " << t_err;
 			if (!glaerInitCurrentContext()) {
 				Log::error() << "GLAER initialization failed";
 				glfwTerminate();
@@ -461,7 +459,7 @@ namespace gecom {
 				gl_err = glGetError();
 			}
 			Log::info() << "GL_VENDOR: " << glGetString(GL_VENDOR);
-			Log::info() << "GL_RENDERER " << glGetString(GL_RENDERER);
+			Log::info() << "GL_RENDERER: " << glGetString(GL_RENDERER);
 			Log::info() << "GL_VERSION: " << glGetString(GL_VERSION);
 			Log::info() << "GL_SHADING_LANGUAGE_VERSION: " << glGetString(GL_SHADING_LANGUAGE_VERSION);
 			Log::info().verbosity(0) << "GLAER initialized";
