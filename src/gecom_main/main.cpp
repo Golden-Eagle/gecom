@@ -67,6 +67,15 @@ int main() {
 		}
 	}
 
+	for (int i = 40; i < 60; i++) {
+		section_guard sec("overflow");
+		string s;
+		for (int j = 0; j < i; j++) {
+			s += 'x';
+		}
+		Log::info() << s;
+	}
+
 	while (!win->shouldClose()) {
 		glfwPollEvents();
 		if (win->getKey(GLFW_KEY_SPACE)) {

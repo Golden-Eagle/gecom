@@ -11,6 +11,12 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 
+#if defined(_MSC_VER) || defined(__MINGW32__) || defined(__MINGW64__)
+// test for toolchains that support functions for manipulation of FILE pointers,
+// like _fileno, _get_osfhandle, _fdopen, _open_osfhandle
+#define GECOM_CAN_HAVE_MSVCRT_STDIO
+#endif
+
 namespace gecom {
 
 	class win32_error : public std::exception {

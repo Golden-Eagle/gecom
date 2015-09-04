@@ -3,8 +3,7 @@
 
 #ifdef GECOM_PLATFORM_WIN32
 #include <windows.h>
-#if defined(_MSC_VER) || defined(__MINGW32__) || defined(__MINGW64__)
-// incomplete test for toolchains that support the required functions
+#ifdef GECOM_CAN_HAVE_MSVCRT_STDIO
 #define GECOM_STDIO_REDIRECT_WIN32
 #include <io.h>
 #include <fcntl.h>
@@ -15,12 +14,15 @@
 #define GECOM_STDIO_REDIRECT_POSIX
 #include <unistd.h>
 #include <sys/ioctl.h>
+// We probably have ioctl() for terminal size
+#define GECOM_HAVE_IOCTL
 #endif
 
 #include <cassert>
 #include <cstdio>
 #include <cstring>
 #include <cctype>
+#include <climits>
 #include <vector>
 #include <thread>
 #include <atomic>
@@ -422,6 +424,16 @@ namespace {
 			return m_fp;
 		}
 
+		int terminalWidth() const noexcept {
+			CONSOLE_SCREEN_BUFFER_INFO csbi;
+			if (GetConsoleScreenBufferInfo(m_hreal, &csbi)) {
+				return csbi.srWindow.Right - csbi.srWindow.Left + 1;
+			} else {
+				// not a console
+				return INT_MAX;
+			}
+		}
+
 		~Redirection() {
 			close();
 		}
@@ -574,6 +586,35 @@ namespace {
 namespace gecom {
 
 	namespace terminal {
+
+		int width(FILE *fp) {
+#if defined(GECOM_STDIO_REDIRECT_WIN32)
+			// stdout and stderr are redirected, try find real terminal width
+			for (const auto &r : redirections) {
+				if (r->file() == fp) {
+					return r->terminalWidth();
+				}
+			}
+			// not a terminal
+			return INT_MAX;
+#elif defined(GECOM_STDIO_REDIRECT_POSIX)
+			// no redirection yet
+			struct winsize w;
+			if (ioctl(fileno(fp), TIOCGWINSZ, &w) >= 0) {
+				return w.ws_col;
+			} else {
+				// not a terminal
+				return INT_MAX;
+			}
+#else
+			// can't get real terminal width, guess
+			if (fp == stdout || fp == stderr) {
+				return 80;
+			} else {
+				return INT_MAX;
+			}
+#endif
+		}
 
 #ifdef GECOM_TERMINAL_ANSI
 		std::ostream & reset(std::ostream &o) { o << "\033[0m"; return o; }

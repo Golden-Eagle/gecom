@@ -2,6 +2,7 @@
 #ifndef GECOM_TERMINAL_HPP
 #define GECOM_TERMINAL_HPP
 
+#include <cstdio>
 #include <iostream>
 
 namespace gecom {
@@ -40,6 +41,10 @@ namespace gecom {
 		std::ostream & onMagenta(std::ostream &);
 		std::ostream & onCyan(std::ostream &);
 		std::ostream & onWhite(std::ostream &);
+
+		// width in characters of the terminal behind a FILE pointer
+		// if no terminal, returns INT_MAX
+		int width(FILE *);
 
 	}
 

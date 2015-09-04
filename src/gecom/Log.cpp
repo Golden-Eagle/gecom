@@ -5,17 +5,20 @@
 #include <windows.h>
 #endif
 
+// can we go between HANDLE and FILE * on windows?
+#ifdef GECOM_CAN_HAVE_MSVCRT_STDIO
+#include <io.h>
+#include <fcntl.h>
+#endif
+
 // Are we posix-ish?
 #ifdef GECOM_PLATFORM_POSIX
 #include <unistd.h>
 #include <time.h>
-#include <sys/ioctl.h>
 // Posix defines gmtime_r(), which is threadsafe
 #define GECOM_HAVE_GMTIME_R
 // Posix defines getpid()
 #define GECOM_HAVE_GETPID
-// We probably have ioctl() for terminal size
-#define GECOM_HAVE_IOCTL
 #endif
 
 // is our gmtime() threadsafe?
@@ -31,6 +34,8 @@
 
 #include <cctype>
 #include <ctime>
+#include <cstdio>
+#include <climits>
 #include <thread>
 #include <sstream>
 
@@ -48,35 +53,24 @@ namespace {
 #endif
 	}
 
-	int consoleWidth() {
-#ifdef _WIN32
-		HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
-		CONSOLE_SCREEN_BUFFER_INFO csbi;
-		GetConsoleScreenBufferInfo(h, &csbi);
-		return csbi.srWindow.Right - csbi.srWindow.Left + 1;
-#elif defined(GECOM_HAVE_IOCTL)
-		struct winsize w;
-		ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-		return w.ws_col;
-#else
-		return 80;
-#endif
-	}
-
-	// log output for writing to console via std::cout/cerr/clog (with color)
-	class ConsoleLogOutput : public gecom::StreamLogOutput {
+	// log output for writing to console (with color)
+	class ConsoleLogOutput : public gecom::LogOutput {
 	protected:
+		// we use FILE * in order to query the console width
+		FILE *m_fp;
+
 		virtual void writeImpl(const gecom::logmessage &msg) override;
 
 	public:
-		explicit ConsoleLogOutput(std::ostream *out_, bool mute_ = false) : StreamLogOutput(out_, mute_) { }
+		explicit ConsoleLogOutput(FILE *fp_, bool mute_ = false) : LogOutput(mute_), m_fp(fp_) { }
 	};
 
 	void ConsoleLogOutput::writeImpl(const gecom::logmessage &msg) {
 		namespace terminal = gecom::terminal;
 		using gecom::loglevel;
 
-		std::ostream &out = *stream();
+		// dump to string first, then write to file
+		std::ostringstream out;
 
 		// colorization
 		std::ostream & (*levelcolor)(std::ostream &);
@@ -122,27 +116,30 @@ namespace {
 				out << terminal::boldBlack << c;
 			}
 		}
-		out << delimcolor << " | ";
 
 		// verbosity and level
+		out << delimcolor << " | ";
 		out << levelcolor << msg.verbosity << delimcolor << "> " << levelcolor << std::setw(11) << msg.level;
 
 		// source
 		out << delimcolor << " [" << terminal::reset;
 		out << levelcolor << ' ' << msg.source << ' ';
-		out << delimcolor << "]" << terminal::reset;
+		out << delimcolor << "] : " << terminal::reset;
 
 		// do we need to start body on new line?
-		// TODO check msg size against console width and cursor col
-		if (msg.body.find_first_of("\r\n") != std::string::npos || msg.body.size() > 50) {
+		size_t totalwidth = 49 + msg.source.size() + msg.body.size();
+		if (msg.body.find_first_of("\r\n") != std::string::npos || totalwidth >= terminal::width(m_fp)) {
 			out << '\n';
-		} else {
-			out << delimcolor << " : " << terminal::reset;
 		}
 
 		// message body
 		out << msg.body;
 		out << std::endl;
+
+		// write to output
+		std::string outtext = out.str();
+		fwrite(outtext.c_str(), 1, outtext.size(), m_fp);
+		fflush(m_fp);
 	}
 
 	class DebugLogOutput : public gecom::LogOutput {
@@ -164,8 +161,8 @@ namespace {
 #endif
 
 	// stdio log outputs
-	ConsoleLogOutput stdout_logoutput { &std::cout, true };
-	ConsoleLogOutput stderr_logoutput { &std::clog, false };
+	ConsoleLogOutput stdout_logoutput { stdout, true };
+	ConsoleLogOutput stderr_logoutput { stderr, false };
 
 	// debug log output
 	DebugLogOutput debug_logoutput { false };
