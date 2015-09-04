@@ -220,13 +220,16 @@ namespace gecom {
 	// window forward declaration
 	class Window;
 
+	// window event proxy forward declaration
+	class WindowEventProxy;
+
 	// window event forward declarations
 	struct window_event;
 	struct window_refresh_event;
 	struct window_close_event;
 	struct window_pos_event;
 	struct window_size_event;
-	struct window_framebuffer_size_event;
+	struct framebuffer_size_event;
 	struct window_focus_event;
 	struct window_icon_event;
 	struct mouse_event;
@@ -242,7 +245,7 @@ namespace gecom {
 		virtual void dispatchWindowCloseEvent(const window_close_event &) { }
 		virtual void dispatchWindowPosEvent(const window_pos_event &) { }
 		virtual void dispatchWindowSizeEvent(const window_size_event &) { }
-		virtual void dispatchWindowFramebufferSizeEvent(const window_framebuffer_size_event &) { }
+		virtual void dispatchFramebufferSizeEvent(const framebuffer_size_event &) { }
 		virtual void dispatchWindowFocusEvent(const window_focus_event &) { }
 		virtual void dispatchWindowIconEvent(const window_icon_event &) { }
 		virtual void dispatchMouseEvent(const mouse_event &) { }
@@ -255,13 +258,10 @@ namespace gecom {
 
 	// base window event
 	struct window_event {
-		Window *window = nullptr;
+		WindowEventProxy *proxy = nullptr;
 
 		// dispatch to virtual event dispatcher
 		virtual void dispatch(WindowEventDispatcher &wed) const = 0;
-
-		// dispatch to origin window
-		void dispatchOrigin() const;
 
 		virtual ~window_event() { }
 	};
@@ -299,11 +299,11 @@ namespace gecom {
 	};
 
 	// window framebuffer size changed
-	struct window_framebuffer_size_event : public window_event {
+	struct framebuffer_size_event : public window_event {
 		size2i size;
 
 		virtual void dispatch(WindowEventDispatcher &wed) const override {
-			wed.dispatchWindowFramebufferSizeEvent(*this);
+			wed.dispatchFramebufferSizeEvent(*this);
 		}
 	};
 
@@ -381,13 +381,14 @@ namespace gecom {
 	class WindowEventProxy : public WindowEventDispatcher, private Uncopyable {
 	protected:
 		std::bitset<GLFW_KEY_LAST + 1> m_keystates;
-		std::bitset<GLFW_MOUSE_BUTTON_LAST + 1> m_buttonstates;
+		std::bitset<GLFW_MOUSE_BUTTON_LAST + 1> m_mbstates;
+		point2d m_mpos;
 
 	public:
 		Event<window_event> onEvent;
 		Event<window_pos_event> onMove;
 		Event<window_size_event> onResize;
-		Event<window_framebuffer_size_event> onResizeFramebuffer;
+		Event<framebuffer_size_event> onFramebufferResize;
 		Event<window_refresh_event> onRefresh;
 		Event<window_close_event> onClose;
 		Event<window_focus_event> onFocus;
@@ -409,9 +410,9 @@ namespace gecom {
 		Event<char_event> onChar;
 
 		// helper method; subscribes an event dispatcher to onEvent
-		subscription_ptr subscribeEventDispatcher(std::shared_ptr<WindowEventDispatcher> proxy) {
-			return onEvent.subscribe([proxy = std::move(proxy)](const window_event &e) {
-				e.dispatch(*proxy);
+		subscription_ptr subscribeEventDispatcher(std::shared_ptr<WindowEventDispatcher> wed) {
+			return onEvent.subscribe([wed = std::move(wed)](const window_event &e) {
+				e.dispatch(*wed);
 				return false;
 			});
 		}
@@ -420,6 +421,7 @@ namespace gecom {
 		virtual void dispatchWindowCloseEvent(const window_close_event &) override;
 		virtual void dispatchWindowPosEvent(const window_pos_event &) override;
 		virtual void dispatchWindowSizeEvent(const window_size_event &) override;
+		virtual void dispatchFramebufferSizeEvent(const framebuffer_size_event &) override;
 		virtual void dispatchWindowFocusEvent(const window_focus_event &) override;
 		virtual void dispatchWindowIconEvent(const window_icon_event &) override;
 		virtual void dispatchMouseEvent(const mouse_event &) override;
@@ -428,7 +430,7 @@ namespace gecom {
 		virtual void dispatchKeyEvent(const key_event &) override;
 		virtual void dispatchCharEvent(const char_event &) override;
 
-		bool getKey(unsigned k) {
+		bool getKey(unsigned k) const {
 			return m_keystates.test(k);
 		}
 
@@ -438,14 +440,18 @@ namespace gecom {
 			return r;
 		}
 
-		bool getButton(unsigned b) {
-			return m_buttonstates.test(b);
+		bool getMouseButton(unsigned b) const {
+			return m_mbstates.test(b);
 		}
 
-		bool clearButton(unsigned b) {
-			bool r = m_buttonstates.test(b);
-			m_buttonstates.reset(b);
+		bool clearMouseButton(unsigned b) {
+			bool r = m_mbstates.test(b);
+			m_mbstates.reset(b);
 			return r;
+		}
+
+		point2d mousePosition() const {
+			return m_mpos;
 		}
 	};
 
@@ -594,11 +600,6 @@ namespace gecom {
 
 		static Window * current();
 	};
-
-	inline void window_event::dispatchOrigin() const {
-		// inheritance of Window from WindowEventDispatcher is not known until after definition of Window
-		dispatch(*window);
-	}
 
 	class create_window_args {
 	private:

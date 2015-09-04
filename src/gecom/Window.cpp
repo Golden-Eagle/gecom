@@ -30,119 +30,119 @@ namespace gecom {
 		void callbackWindowPos(GLFWwindow *handle, int x, int y) {
 			Window *win = getWindow(handle);
 			window_pos_event e;
-			e.window = win;
+			e.proxy = win;
 			e.pos = point2i(x, y);
-			e.dispatchOrigin();
+			e.dispatch(*win);
 		}
 
 		void callbackWindowSize(GLFWwindow *handle, int w, int h) {
 			Window *win = getWindow(handle);
 			window_size_event e;
-			e.window = win;
+			e.proxy = win;
 			e.size = size2i(w, h);
-			e.dispatchOrigin();
+			e.dispatch(*win);
 		}
 
 		void callbackWindowClose(GLFWwindow *handle) {
 			Window *win = getWindow(handle);
 			window_close_event e;
-			e.window = win;
-			e.dispatchOrigin();
+			e.proxy = win;
+			e.dispatch(*win);
 		}
 
 		void callbackWindowRefresh(GLFWwindow *handle) {
 			Window *win = getWindow(handle);
 			window_refresh_event e;
-			e.window = win;
-			e.dispatchOrigin();
+			e.proxy = win;
+			e.dispatch(*win);
 		}
 
 		void callbackWindowFocus(GLFWwindow *handle, int focused) {
-			WindowData *wd = getWindowData(handle);
+			Window *win = getWindow(handle);
 			window_focus_event e;
-			e.window = wd->window;
+			e.proxy = win;
 			e.focused = focused;
-			e.dispatchOrigin();
+			e.dispatch(*win);
 		}
 
 		void callbackWindowIconify(GLFWwindow *handle, int iconified) {
 			Window *win = getWindow(handle);
 			window_icon_event e;
-			e.window = win;
+			e.proxy = win;
 			e.iconified = iconified;
-			e.dispatchOrigin();
+			e.dispatch(*win);
 		}
 
 		void callbackFramebufferSize(GLFWwindow *handle, int w, int h) {
 			Window *win = getWindow(handle);
-			window_framebuffer_size_event e;
-			e.window = win;
+			framebuffer_size_event e;
+			e.proxy = win;
 			e.size.w = w;
 			e.size.h = h;
-			e.dispatchOrigin();
+			e.dispatch(*win);
 		}
 
 		void callbackMouseButton(GLFWwindow *handle, int button, int action, int mods) {
-			WindowData *wd = getWindowData(handle);
+			Window *win = getWindow(handle);
 			mouse_button_event e;
-			e.window = wd->window;
+			e.proxy = win;
 			e.button = button;
 			e.action = action;
 			e.mods = mods;
 			e.entered = false;
 			e.exited = false;
 			glfwGetCursorPos(handle, &e.pos.x, &e.pos.y);
-			e.dispatchOrigin();
+			e.dispatch(*win);
 		}
 
 		void callbackCursorPos(GLFWwindow *handle, double x, double y) {
 			Window *win = getWindow(handle);
 			mouse_event e;
-			e.window = win;
+			e.proxy = win;
 			e.pos = point2d(x, y);
 			e.entered = false;
 			e.exited = false;
-			e.dispatchOrigin();
+			e.dispatch(*win);
 		}
 
 		void callbackCursorEnter(GLFWwindow *handle, int entered) {
 			Window *win = getWindow(handle);
 			mouse_event e;
-			e.window = win;
+			e.proxy = win;
 			glfwGetCursorPos(handle, &e.pos.x, &e.pos.y);
 			e.entered = entered;
 			e.exited = !entered;
-			e.dispatchOrigin();
+			e.dispatch(*win);
 		}
 
 		void callbackScroll(GLFWwindow *handle, double xoffset, double yoffset) {
 			Window *win = getWindow(handle);
 			mouse_scroll_event e;
-			e.window = win;
+			e.proxy = win;
 			glfwGetCursorPos(handle, &e.pos.x, &e.pos.y);
 			e.entered = false;
 			e.exited = false;
 			e.offset = size2d(xoffset, yoffset);
-			e.dispatchOrigin();
+			e.dispatch(*win);
 		}
 
 		void callbackKey(GLFWwindow *handle, int key, int scancode, int action, int mods) {
-			WindowData *wd = getWindowData(handle);
+			Window *win = getWindow(handle);
 			key_event e;
-			e.window = wd->window;
+			e.proxy = win;
 			e.key = key;
 			e.scancode = scancode;
 			e.action = action;
 			e.mods = mods;
-			e.dispatchOrigin();
+			e.dispatch(*win);
 		}
 
 		void callbackChar(GLFWwindow *handle, unsigned codepoint) {
 			Window *win = getWindow(handle);
 			char_event e;
-			e.window = win;
+			e.proxy = win;
 			e.codepoint = codepoint;
-			e.dispatchOrigin();
+			e.dispatch(*win);
 		}
 
 		void callbackErrorGLFW(int error, const char *description) {
@@ -176,7 +176,7 @@ namespace gecom {
 		}
 
 		// GL callback for debug information
-		// gl.xml and the glDebugMessageControl.xml disagree on if userParam should point to const
+		// gl.xml and glDebugMessageControl.xml disagree on whether userParam should point to const or not
 		void APIENTRY callbackDebugGL(
 			GLenum source,
 			GLenum type,
@@ -278,8 +278,6 @@ namespace gecom {
 				}
 
 				// actual message. id = as returned by glGetError(), in some cases
-				//ostringstream oss;
-				//oss << " [" << id << "] : " << message;
 				logs << " [" << id << "] : " << message;
 
 			}
@@ -295,13 +293,17 @@ namespace gecom {
 	}
 
 	void WindowEventProxy::dispatchWindowRefreshEvent(const window_refresh_event &e) {
-		onEvent.notify(e);
-		onRefresh.notify(e);
+		window_refresh_event e2(e);
+		e2.proxy = this;
+		onRefresh.notify(e2);
+		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchWindowCloseEvent(const window_close_event &e) {
-		onEvent.notify(e);
-		onClose.notify(e);
+		window_close_event e2(e);
+		e2.proxy = this;
+		onClose.notify(e2);
+		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchWindowPosEvent(const window_pos_event &e) {
@@ -310,73 +312,99 @@ namespace gecom {
 	}
 
 	void WindowEventProxy::dispatchWindowSizeEvent(const window_size_event &e) {
-		onEvent.notify(e);
-		onResize.notify(e);
+		window_size_event e2(e);
+		e2.proxy = this;
+		onResize.notify(e2);
+		onEvent.notify(e2);
+	}
+
+	void WindowEventProxy::dispatchFramebufferSizeEvent(const framebuffer_size_event &e) {
+		framebuffer_size_event e2(e);
+		e2.proxy = this;
+		onFramebufferResize.notify(e2);
+		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchWindowFocusEvent(const window_focus_event &e) {
-		onEvent.notify(e);
-		onFocus.notify(e);
-		if (e.focused) {
-			onFocusGain.notify(e);
+		window_focus_event e2(e);
+		e2.proxy = this;
+		if (e2.focused) {
+			onFocusGain.notify(e2);
 		} else {
-			// lost focus, release all keys and buttons
+			// lost focus, release all keys and mouse buttons
 			m_keystates.reset();
-			m_buttonstates.reset();
-			onFocusLose.notify(e);
+			m_mbstates.reset();
+			onFocusLose.notify(e2);
 		}
+		onFocus.notify(e2);
+		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchWindowIconEvent(const window_icon_event &e) {
-		onEvent.notify(e);
-		onIcon.notify(e);
-		if (e.iconified) {
-			onIconMinimize.notify(e);
+		window_icon_event e2(e);
+		e2.proxy = this;
+		if (e2.iconified) {
+			onIconMinimize.notify(e2);
 		} else {
-			onIconRestore.notify(e);
+			onIconRestore.notify(e2);
 		}
+		onIcon.notify(e2);
+		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchMouseEvent(const mouse_event &e) {
-		onEvent.notify(e);
-		onMouseMove.notify(e);
-		if (e.entered) onMouseEnter.notify(e);
-		if (e.exited) onMouseExit.notify(e);
+		mouse_event e2(e);
+		e2.proxy = this;
+		m_mpos = e2.pos;
+		if (e.entered) onMouseEnter.notify(e2);
+		if (e.exited) onMouseExit.notify(e2);
+		onMouseMove.notify(e2);
+		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchMouseButtonEvent(const mouse_button_event &e) {
-		onEvent.notify(e);
-		onMouseButton.notify(e);
+		mouse_button_event e2(e);
+		e2.proxy = this;
+		m_mpos = e2.pos;
 		// i dont think mouse buttons get repeats, but whatever
-		if (e.action == GLFW_PRESS || e.action == GLFW_REPEAT) {
-			m_buttonstates.set(e.button);
-			onMouseButtonPress.notify(e);
-		} else if (e.action == GLFW_RELEASE) {
-			m_buttonstates.reset(e.button);
-			onMouseButtonRelease.notify(e);
+		if (e2.action == GLFW_PRESS || e2.action == GLFW_REPEAT) {
+			m_mbstates.set(e2.button);
+			onMouseButtonPress.notify(e2);
+		} else if (e2.action == GLFW_RELEASE) {
+			m_mbstates.reset(e2.button);
+			onMouseButtonRelease.notify(e2);
 		}
+		onMouseButton.notify(e2);
+		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchMouseScrollEvent(const mouse_scroll_event &e) {
-		onEvent.notify(e);
-		onMouseScroll.notify(e);
+		mouse_scroll_event e2(e);
+		e2.proxy = this;
+		m_mpos = e2.pos;
+		onMouseScroll.notify(e2);
+		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchKeyEvent(const key_event &e) {
-		onEvent.notify(e);
-		onKey.notify(e);
-		if (e.action == GLFW_PRESS || e.action == GLFW_REPEAT) {
-			m_keystates.set(e.key);
-			onKeyPress.notify(e);
-		} else if (e.action == GLFW_RELEASE) {
-			m_keystates.reset(e.key);
-			onKeyRelease.notify(e);
+		key_event e2(e);
+		e2.proxy = this;
+		if (e2.action == GLFW_PRESS || e2.action == GLFW_REPEAT) {
+			m_keystates.set(e2.key);
+			onKeyPress.notify(e2);
+		} else if (e2.action == GLFW_RELEASE) {
+			m_keystates.reset(e2.key);
+			onKeyRelease.notify(e2);
 		}
+		onKey.notify(e2);
+		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchCharEvent(const char_event &e) {
-		onEvent.notify(e);
-		onChar.notify(e);
+		char_event e2(e);
+		e2.proxy = this;
+		onChar.notify(e2);
+		onEvent.notify(e2);
 	}
 
 	GlaerContext * getCurrentGlaerContext() {
