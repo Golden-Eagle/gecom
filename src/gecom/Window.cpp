@@ -368,10 +368,10 @@ namespace gecom {
 		m_mpos = e2.pos;
 		// i dont think mouse buttons get repeats, but whatever
 		if (e2.action == GLFW_PRESS || e2.action == GLFW_REPEAT) {
-			m_mbstates.set(e2.button);
+			setMouseButtonState(e2.button, true);
 			onMouseButtonPress.notify(e2);
 		} else if (e2.action == GLFW_RELEASE) {
-			m_mbstates.reset(e2.button);
+			setMouseButtonState(e2.button, false);
 			onMouseButtonRelease.notify(e2);
 		}
 		onMouseButton.notify(e2);
@@ -390,10 +390,10 @@ namespace gecom {
 		key_event e2(e);
 		e2.proxy = this;
 		if (e2.action == GLFW_PRESS || e2.action == GLFW_REPEAT) {
-			m_keystates.set(e2.key);
+			setKeyState(e2.key, true);
 			onKeyPress.notify(e2);
 		} else if (e2.action == GLFW_RELEASE) {
-			m_keystates.reset(e2.key);
+			setKeyState(e2.key, false);
 			onKeyRelease.notify(e2);
 		}
 		onKey.notify(e2);

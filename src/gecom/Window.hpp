@@ -384,6 +384,16 @@ namespace gecom {
 		std::bitset<GLFW_MOUSE_BUTTON_LAST + 1> m_mbstates;
 		point2d m_mpos;
 
+		void setKeyState(int key, bool state) {
+			if (size_t(key) > GLFW_KEY_LAST) return;
+			m_keystates[size_t(key)] = state;
+		}
+
+		void setMouseButtonState(int button, bool state) {
+			if (size_t(button) > GLFW_MOUSE_BUTTON_LAST) return;
+			m_mbstates[size_t(button)] = state;
+		}
+
 	public:
 		Event<window_event> onEvent;
 		Event<window_pos_event> onMove;
