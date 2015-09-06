@@ -5,12 +5,6 @@
 #include <windows.h>
 #endif
 
-// can we go between HANDLE and FILE * on windows?
-#ifdef GECOM_CAN_HAVE_MSVCRT_STDIO
-#include <io.h>
-#include <fcntl.h>
-#endif
-
 // Are we posix-ish?
 #ifdef GECOM_PLATFORM_POSIX
 #include <unistd.h>
