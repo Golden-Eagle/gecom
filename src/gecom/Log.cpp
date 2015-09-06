@@ -62,7 +62,9 @@ namespace {
 		virtual void writeImpl(const gecom::logmessage &msg) override;
 
 	public:
-		explicit ConsoleLogOutput(FILE *fp_, bool mute_ = false) : LogOutput(mute_), m_fp(fp_) { }
+		explicit ConsoleLogOutput(FILE *fp_, bool mute_ = false) : LogOutput(mute_), m_fp(fp_) {
+			verbosity(4);
+		}
 	};
 
 	void ConsoleLogOutput::writeImpl(const gecom::logmessage &msg) {
@@ -147,7 +149,9 @@ namespace {
 		virtual void writeImpl(const gecom::logmessage &msg) override;
 
 	public:
-		explicit DebugLogOutput(bool mute_ = false) : LogOutput(mute_) { }
+		explicit DebugLogOutput(bool mute_ = false) : LogOutput(mute_) {
+			verbosity(4);
+		}
 	};
 
 #ifdef GECOM_PLATFORM_WIN32
