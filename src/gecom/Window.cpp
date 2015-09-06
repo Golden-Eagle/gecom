@@ -264,16 +264,16 @@ namespace gecom {
 				// severity -> log verbosity
 				switch (severity) {
 				case GL_DEBUG_SEVERITY_NOTIFICATION:
-					logs.verbosity(3);
+					logs.verbosity(4);
 					break;
 				case GL_DEBUG_SEVERITY_LOW:
-					logs.verbosity(2);
+					logs.verbosity(3);
 					break;
 				case GL_DEBUG_SEVERITY_MEDIUM:
-					logs.verbosity(1);
+					logs.verbosity(2);
 					break;
 				case GL_DEBUG_SEVERITY_HIGH:
-					logs.verbosity(0);
+					logs.verbosity(1);
 					break;
 				}
 
