@@ -1,4 +1,7 @@
 
+// apparently freopen() is unsafe. we use it safely.
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "Platform.hpp"
 
 #ifdef GECOM_PLATFORM_WIN32
@@ -128,7 +131,7 @@ namespace {
 		Redirection(const Redirection &) = delete;
 		Redirection & operator=(const Redirection &) = delete;
 
-		Redirection(FILE *fp_, size_t pipebufsize_) : m_fp(fp_), m_buf(internalbufsize, 0), m_pipename(makeRandomPipeName()) {
+		Redirection(FILE *fp_, DWORD pipebufsize_) : m_fp(fp_), m_buf(internalbufsize, 0), m_pipename(makeRandomPipeName()) {
 			
 			// initialize write buffer pointer
 			m_pwrite = &m_buf.front();
@@ -256,7 +259,7 @@ namespace {
 				if (ReadFile(
 					m_hpiper,
 					m_pwrite,
-					&m_buf.front() + m_buf.size() - m_pwrite,
+					DWORD(&m_buf.front() + m_buf.size() - m_pwrite),
 					&bytesread,
 					&m_overlap
 				)) {
@@ -293,7 +296,7 @@ namespace {
 					if (!PeekNamedPipe(
 						m_hpiper,
 						m_pwrite,
-						&m_buf.front() + m_buf.size() - m_pwrite,
+						DWORD(&m_buf.front() + m_buf.size() - m_pwrite),
 						nullptr,
 						&bytesavail,
 						nullptr
@@ -352,7 +355,7 @@ namespace {
 			// parse escape code if we're a console
 			if (m_isatty) {
 				char esctype = *(pbegin + count - 1);
-				if (esctype = 'm') {
+				if (esctype == 'm') {
 					// update text attributes
 					int code = 0;
 					for (const char *p = pbegin; p < pbegin + count; p++) {
@@ -467,7 +470,7 @@ namespace {
 			while (!done) {
 
 				// wait for data
-				int waitresult = WaitForMultipleObjects(events.size(), &events.front(), false, INFINITE);
+				int waitresult = WaitForMultipleObjects(DWORD(events.size()), &events.front(), false, INFINITE);
 
 				// get signaled event
 				int i = waitresult - WAIT_OBJECT_0;
@@ -509,7 +512,10 @@ namespace {
 			}
 
 		} catch (gecom::win32_error &e) {
-			// report any errors
+			// freopen stdout and stderr to console
+			freopen("CONOUT$", "w", stdout);
+			freopen("CONOUT$", "w", stderr);
+			// report error
 			fprintf(stderr, "%s\n", e.what());
 			return;
 		}
