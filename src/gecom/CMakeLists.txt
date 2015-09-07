@@ -1,35 +1,33 @@
 
-# list .hpp
-set(headers
-	"Concurrent.hpp"
-	"Util.hpp"
+# gecom sources
+set(sources
 	"GL.hpp"
-	"Image.hpp"
 	"Initial3D.hpp"
-	"Log.hpp"
-	"Perlin.hpp"
+	"Uncopyable.hpp"
+	"Util.hpp"
+	"Concurrent.hpp"
+	"Concurrent.cpp"
+	"Image.hpp"
 	"Shader.hpp"
 	"SimpleShader.hpp"
-	"Window.hpp"
-	"Section.hpp"
-	"Profiler.hpp"
-	"Terminal.hpp"
-	"Platform.hpp"
-	"Uncopyable.hpp"
-)
-
-# list .cpp
-set(sources
-	"Concurrent.cpp"
-	"Log.cpp"
+	"Perlin.hpp"
 	"Perlin.cpp"
+	"Window.hpp"
 	"Window.cpp"
+	"Profiler.hpp"
+	"Log.hpp"
+	"Log.cpp"
+	"Section.hpp"
 	"Section.cpp"
+	"Terminal.hpp"
 	"Terminal.cpp"
+	"Platform.hpp"
 	"Platform.cpp"
 )
 
-add_library(gecom ${headers} ${sources})
+add_library(gecom ${sources})
+
+source_group("Sources" FILES ${sources})
 
 # Link usage requirements
 target_link_libraries(gecom PUBLIC glfw glaer)
