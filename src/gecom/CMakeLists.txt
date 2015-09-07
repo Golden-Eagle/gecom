@@ -7,7 +7,6 @@ set(sources
 	"Util.hpp"
 	"Concurrent.hpp"
 	"Concurrent.cpp"
-	"Image.hpp"
 	"Shader.hpp"
 	"SimpleShader.hpp"
 	"Perlin.hpp"
