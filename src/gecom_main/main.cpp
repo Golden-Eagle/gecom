@@ -20,6 +20,8 @@ int main() {
 	// need to reference something from terminal.cpp to initialize redirection
 	cout << terminal::reset << std::endl;
 
+	assertMainThread();
+
 	Log::info().verbosity(4) << "shouldn't see this on console";
 
 	// test

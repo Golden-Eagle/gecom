@@ -1,10 +1,12 @@
 
 #include <vector>
 #include <unordered_map>
+#include <cstdio>
 
 #include "Concurrent.hpp"
 #include "Log.hpp"
 #include "Util.hpp"
+#include "Terminal.hpp"
 
 using namespace std;
 using namespace gecom;
@@ -275,6 +277,8 @@ namespace gecom {
 				~AsyncInit() {
 					// signal workers should exit; worker dtor does the rest
 					should_exit = true;
+					// reference terminal.cpp; try to encourage terminal init before async init
+					terminal::width(stdout);
 				}
 			};
 

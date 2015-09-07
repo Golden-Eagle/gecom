@@ -24,6 +24,14 @@ namespace gecom {
 
 	std::thread::id mainThreadId() noexcept;
 	
+	inline void assertThread(std::thread::id x) {
+		assert(std::this_thread::get_id() == x);
+	}
+
+	inline void assertMainThread() {
+		assertThread(mainThreadId());
+	}
+
 	// asynchronous execution services
 	namespace async {
 
