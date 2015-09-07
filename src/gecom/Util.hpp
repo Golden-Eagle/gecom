@@ -31,6 +31,9 @@ namespace gecom {
 			return wsback <= wsfront ? std::string() : std::string(wsfront, wsback);
 		}
 
+		// unused() base case
+		inline void unused() { }
+
 		// function to declare things as unused
 		template <typename T1, typename... TR>
 		inline void unused(const T1 &t1, const TR &...tr) {
@@ -38,12 +41,11 @@ namespace gecom {
 			unused(tr...);
 		}
 
-		// unused() base case
-		inline void unused() { }
-
 		namespace detail {
 			template <typename FunT, typename ArgTupleT, size_t ...IR>
 			inline decltype(auto) call_impl(FunT &&fun, ArgTupleT &&args, std::index_sequence<IR...>) {
+				// when args tuple is empty, it ends up unused
+				unused(args);
 				return fun(std::get<IR>(args)...);
 			}
 		}
