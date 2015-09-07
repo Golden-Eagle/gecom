@@ -9,7 +9,16 @@
 using namespace std;
 using namespace gecom;
 
+namespace {
+	// id of main thread
+	thread::id main_thread_id { this_thread::get_id() };
+}
+
 namespace gecom {
+
+	thread::id mainThreadId() noexcept {
+		return main_thread_id;
+	}
 
 	namespace async {
 
@@ -270,11 +279,7 @@ namespace gecom {
 			};
 
 			AsyncInit async_init_obj;
-
-			// id of main thread
-			thread::id main_thread_id { this_thread::get_id() };
 		}
-
 
 		void detail::invoke(std::thread::id affinity, clock::time_point deadline, detail::runnable_ptr taskfun) {
 			if (affinity == thread::id()) {
@@ -282,10 +287,6 @@ namespace gecom {
 			} else {
 				invokeAffinitized(affinity, make_shared<Task>(move(deadline), move(taskfun)));
 			}
-		}
-
-		thread::id mainThreadId() noexcept {
-			return main_thread_id;
 		}
 
 		void concurrency(size_t x) {

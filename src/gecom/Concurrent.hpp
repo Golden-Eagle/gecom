@@ -21,13 +21,13 @@
 #include "Uncopyable.hpp"
 
 namespace gecom {
+
+	std::thread::id mainThreadId() noexcept;
 	
 	// asynchronous execution services
 	namespace async {
 
 		using clock = std::chrono::steady_clock;
-
-		std::thread::id mainThreadId() noexcept;
 
 		// set maximum number of concurrently scheduled background tasks.
 		// must be at least 1.
