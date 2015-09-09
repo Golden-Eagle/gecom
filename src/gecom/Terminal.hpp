@@ -1,4 +1,20 @@
 
+/*
+ * GECOM Terminal Utilities Header
+ *
+ * Allows use of ANSI terminal escape sequences to manipulate color in
+ * a portable manner. Redirects stdio to a thread and then forwards or
+ * interprets escape sequences if connected to a terminal, suppressing
+ * them otherwise. If no redirection mechanism is available, the iostream
+ * manipulators in this header do nothing.
+ * 
+ * Including this header ensures that terminal stdio redirection is correctly
+ * initialized before any code that comes after the inclusion.
+ *
+ * TODO
+ * - POSIX stdio redirection
+ */
+
 #ifndef GECOM_TERMINAL_HPP
 #define GECOM_TERMINAL_HPP
 
@@ -6,6 +22,14 @@
 #include <iostream>
 
 namespace gecom {
+
+	class TerminalInit {
+	private:
+		static size_t refcount;
+	public:
+		TerminalInit();
+		~TerminalInit();
+	};
 
 	namespace terminal {
 
@@ -48,6 +72,10 @@ namespace gecom {
 
 	}
 
+}
+
+namespace {
+	gecom::TerminalInit terminal_init_obj;
 }
 
 #endif // GECOM_TERMINAL_HPP

@@ -12,9 +12,21 @@
 #include <stdexcept>
 #include <utility>
 
+// we only include this to ensure stdio redirection is initialized before log usage
+#include "Terminal.hpp"
+
+// we only include this to ensure sections are initialized before log usage
 #include "Section.hpp"
 
 namespace gecom {
+
+	class LogInit {
+	private:
+		static size_t refcount;
+	public:
+		LogInit();
+		~LogInit();
+	};
 
 	enum class loglevel {
 		info, warning, error, critical
@@ -150,9 +162,6 @@ namespace gecom {
 		Log(const Log &) = delete;
 		Log & operator=(const Log &) = delete;
 
-		static std::mutex m_mutex;
-		static std::unordered_set<LogOutput *> m_outputs;
-
 	public:
 		static constexpr unsigned defaultVerbosity(loglevel l) {
 			return l == loglevel::critical ? 0 : (l == loglevel::error ? 1 : (l == loglevel::warning ? 2 : 3));
@@ -160,15 +169,9 @@ namespace gecom {
 		
 		static void write(unsigned verbosity, loglevel level, const std::string &source, const std::string &body);
 
-		static void addOutput(LogOutput *out) {
-			std::unique_lock<std::mutex> lock(m_mutex);
-			m_outputs.insert(out);
-		}
+		static void addOutput(LogOutput *);
 
-		static void removeOutput(LogOutput *out) {
-			std::unique_lock<std::mutex> lock(m_mutex);
-			m_outputs.erase(out);
-		}
+		static void removeOutput(LogOutput *);
 
 		// stdout starts muted
 		static LogOutput * stdOut();
@@ -272,6 +275,10 @@ namespace gecom {
 
 	};
 
+}
+
+namespace {
+	gecom::LogInit log_init_obj;
 }
 
 #endif // GECOM_LOG_HPP

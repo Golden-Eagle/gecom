@@ -7,14 +7,32 @@
 #include "Section.hpp"
 
 namespace {
-	std::atomic<bool> default_profiling { false };
-	thread_local bool thread_profiling { default_profiling };
+	
+	struct SectionStatics {
+		std::atomic<bool> default_profiling { false };
+	};
 
-	// this does not get leaked if sections are used correctly
-	thread_local std::vector<gecom::section> *sections = nullptr;
+	auto & sectionStatics() {
+		static SectionStatics s;
+		return s;
+	}
+
+	struct SectionTLStatics {
+		bool current_profiling { sectionStatics().default_profiling };
+
+		// this does not get leaked if sections are used correctly
+		std::vector<gecom::section> *sections = nullptr;
+	};
+
+	auto & sectionTLStatics() {
+		// TODO am i using TLS in a correct way?
+		static thread_local SectionTLStatics s;
+		return s;
+	}
 
 	std::string currentPath() {
 		std::string r;
+		auto sections = sectionTLStatics().sections;
 		if (!sections) return r;
 		for (const auto &s : *sections) {
 			r += s.name();
@@ -27,6 +45,7 @@ namespace {
 namespace gecom {
 
 	section_guard::section_guard(std::string name_) : m_entered(false), m_name(std::move(name_)) {
+		auto &sections = sectionTLStatics().sections;
 		if (!sections) {
 			sections = new std::vector<section>();
 		}
@@ -35,7 +54,7 @@ namespace gecom {
 			path += m_name;
 			path += '/';
 			sections->push_back({ m_name, std::move(path) });
-			if (thread_profiling) {
+			if (section::currentProfiling()) {
 				sections->back().m_time0 = section::clock::now();
 				// TODO call to profiler?
 			}
@@ -47,10 +66,11 @@ namespace gecom {
 
 	section_guard::~section_guard() {
 		if (m_entered) {
+			auto &sections = sectionTLStatics().sections;
 			assert(!sections->empty());
 			assert(sections->back().name() == m_name);
 			if (--sections->back().m_count == 0) {
-				if (thread_profiling) {
+				if (section::currentProfiling()) {
 					sections->back().m_time1 = section::clock::now();
 					// TODO call to profiler?
 				}
@@ -61,27 +81,44 @@ namespace gecom {
 				sections = nullptr;
 			}
 		}
-		
 	}
 
 	const section * section::current() noexcept {
+		auto sections = sectionTLStatics().sections;
 		return sections ? (sections->empty() ? nullptr : &sections->back()) : nullptr;
 	}
 
-	bool section::threadProfiling() {
-		return thread_profiling;
+	bool section::currentProfiling() {
+		return sectionTLStatics().current_profiling;
 	}
 
-	void section::threadProfiling(bool b) {
-		thread_profiling = b;
+	void section::currentProfiling(bool b) {
+		sectionTLStatics().current_profiling = b;
 	}
 
 	bool section::defaultProfiling() {
-		return default_profiling;
+		return sectionStatics().default_profiling;
 	}
 
 	void section::defaultProfiling(bool b) {
-		default_profiling = b;
+		sectionStatics().default_profiling = b;
+	}
+
+	size_t SectionInit::refcount = 0;
+
+	SectionInit::SectionInit() {
+		if (refcount++ == 0) {
+			// ensure section statics are initialized
+			sectionStatics();
+			sectionTLStatics();
+		}
+	}
+
+	SectionInit::~SectionInit() {
+		if (--refcount == 0) {
+			// section statics about to be destroyed
+			// nothing to do
+		}
 	}
 
 }

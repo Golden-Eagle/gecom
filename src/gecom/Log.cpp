@@ -158,21 +158,33 @@ namespace {
 	void DebugLogOutput::writeImpl(const gecom::logmessage &msg) { }
 #endif
 
-	// stdio log outputs
-	ConsoleLogOutput stdout_logoutput { stdout, true };
-	ConsoleLogOutput stderr_logoutput { stderr, false };
+	struct LogStatics {
+		// stdio log outputs
+		ConsoleLogOutput stdout_logoutput { stdout, true };
+		ConsoleLogOutput stderr_logoutput { stderr, false };
 
-	// debug log output
-	DebugLogOutput debug_logoutput { false };
+		// debug log output
+		DebugLogOutput debug_logoutput { false };
+
+		// other log outputs
+		std::mutex output_mutex;
+		std::unordered_set<gecom::LogOutput *> outputs;
+
+		~LogStatics() {
+			gecom::Log::info() << "Log deinitialized";
+		}
+	};
+
+	auto & logStatics() {
+		static LogStatics s;
+		return s;
+	}
 }
 
 namespace gecom {
 
-	std::unordered_set<LogOutput *> Log::m_outputs;
-	std::mutex Log::m_mutex;
-
 	void Log::write(unsigned verbosity, loglevel level, const std::string &source, const std::string &body) {
-		std::unique_lock<std::mutex> lock(m_mutex);
+		std::unique_lock<std::mutex> lock(logStatics().output_mutex);
 
 		using namespace std::chrono;
 
@@ -220,40 +232,50 @@ namespace gecom {
 		msg.body = body;
 
 		// write to debug
-		debug_logoutput.write(msg);
+		logStatics().debug_logoutput.write(msg);
 
 		// write to stdio
-		stderr_logoutput.write(msg);
-		stdout_logoutput.write(msg);
+		logStatics().stderr_logoutput.write(msg);
+		logStatics().stdout_logoutput.write(msg);
 
 		// write to all others
-		for (LogOutput *out : m_outputs) {
+		for (LogOutput *out : logStatics().outputs) {
 			out->write(msg);
 		}
 		
 	}
 
+	void Log::addOutput(LogOutput *out) {
+		std::unique_lock<std::mutex> lock(logStatics().output_mutex);
+		logStatics().outputs.insert(out);
+	}
+
+	void Log::removeOutput(LogOutput *out) {
+		std::unique_lock<std::mutex> lock(logStatics().output_mutex);
+		logStatics().outputs.erase(out);
+	}
+
 	LogOutput * Log::stdOut() {
-		return &stdout_logoutput;
+		return &logStatics().stdout_logoutput;
 	}
 
 	LogOutput * Log::stdErr() {
-		return &stderr_logoutput;
+		return &logStatics().stderr_logoutput;
 	}
 
 	LogOutput * Log::debugOut() {
-		return &debug_logoutput;
+		return &logStatics().debug_logoutput;
 	}
 
 	logstream Log::info(const std::string &source) {
 		std::ostringstream fullsource;
 		fullsource << processID() << '/';
 		fullsource << std::this_thread::get_id() << '/';
-		if (const section *sec = section::current()) {
-			fullsource << sec->path();
-		}
 		if (!source.empty()) {
-			fullsource << source;
+			section_guard sec(source);
+			fullsource << section::current()->path();
+		} else if (const section *sec = section::current()) {
+			fullsource << sec->path();
 		}
 		return logstream(fullsource.str());
 	}
@@ -270,4 +292,20 @@ namespace gecom {
 		return std::move(info(source).critical());
 	}
 
+	size_t LogInit::refcount = 0;
+
+	LogInit::LogInit() {
+		if (refcount++ == 0) {
+			// ensure log statics are initialized
+			logStatics();
+			Log::info() << "Log initialized";
+		}
+	}
+
+	LogInit::~LogInit() {
+		if (--refcount == 0) {
+			// log statics about to be destroyed
+			// nothing to do
+		}
+	}
 }

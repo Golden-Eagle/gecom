@@ -17,12 +17,16 @@ using namespace std::literals;
 int main() {
 	section_guard sec("main");
 
-	// this seems to encourage terminal to init before async
-	cout << terminal::reset << std::endl;
-
 	Log::info().verbosity(0) << "Starting...";
 
 	assertMainThread();
+
+
+	async::invoke(0s, [] {
+		this_thread::sleep_for(5s);
+		Log::info() << "ASYNC!";
+	});
+
 
 	
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).contextVersion(4, 1).visible(true);

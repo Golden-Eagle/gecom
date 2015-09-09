@@ -17,10 +17,18 @@
 #include <memory>
 #include <type_traits>
 
-#include "Log.hpp"
 #include "Uncopyable.hpp"
+#include "Log.hpp"
 
 namespace gecom {
+
+	class ConcurrentInit {
+	private:
+		static size_t refcount;
+	public:
+		ConcurrentInit();
+		~ConcurrentInit();
+	};
 
 	std::thread::id mainThreadId() noexcept;
 	
@@ -451,6 +459,10 @@ namespace gecom {
 
 	};
 
+}
+
+namespace {
+	gecom::ConcurrentInit concurrent_init_obj;
 }
 
 #endif

@@ -95,10 +95,7 @@ namespace {
 
 	using gecom::throwLastWin32Error;
 	using gecom::win32_error;
-
-	// worker thread
-	std::thread redirect_worker;
-
+	
 	std::string makeRandomPipeName() {
 		std::mt19937 rand { std::random_device()() };
 		std::string name = "\\\\.\\pipe\\gecom";
@@ -442,22 +439,34 @@ namespace {
 		}
 	};
 
+	// worker thread
+	auto & redirectWorker() {
+		static std::thread worker;
+		return worker;
+	}
+
 	// active redirections
-	std::vector<std::unique_ptr<Redirection>> redirections;
+	auto & activeRedirections() {
+		static std::vector<std::unique_ptr<Redirection>> redirections;
+		return redirections;
+	}
 
 	// event to signal redirect worker should exit
-	HANDLE redirect_should_exit = INVALID_HANDLE_VALUE;
+	auto & redirectExitEvent() {
+		static HANDLE hevent = INVALID_HANDLE_VALUE;
+		return hevent;
+	}
 
 	void doStdIORedirection() {
 		try {
 			// get event handles for redirections
 			std::vector<HANDLE> events;
-			for (const auto &rd : redirections) {
+			for (const auto &rd : activeRedirections()) {
 				events.push_back(rd->eventHandle());
 			}
 
 			// also wait on should-exit event as lowest priority
-			events.push_back(redirect_should_exit);
+			events.push_back(redirectExitEvent());
 
 			// note that event index must match redirection index
 
@@ -478,16 +487,16 @@ namespace {
 					throwLastWin32Error("wait for pipe");
 				}
 
-				if (i < redirections.size()) {
+				if (i < activeRedirections().size()) {
 					// event was for a redirection
 					// push data through redirect
 					// if last io was cancelled, this resets the event and does not start new io
-					redirections[i]->onEventSignaled();
+					activeRedirections()[i]->onEventSignaled();
 				}
 
 				// was the exit event signaled?
 				bool should_exit = false;
-				switch (WaitForSingleObject(redirect_should_exit, 0)) {
+				switch (WaitForSingleObject(redirectExitEvent(), 0)) {
 				case WAIT_OBJECT_0:
 					should_exit = true;
 					break;
@@ -499,14 +508,14 @@ namespace {
 
 				// cancel any pending io if we need to exit
 				if (should_exit) {
-					for (const auto &rd : redirections) {
+					for (const auto &rd : activeRedirections()) {
 						rd->cancel();
 					}
 				}
 
 				// if exit was signaled and all redirections have no pending io, we're done
 				done = should_exit;
-				for (const auto &rd : redirections) {
+				for (const auto &rd : activeRedirections()) {
 					done &= !rd->pending();
 				}
 			}
@@ -521,69 +530,76 @@ namespace {
 		}
 	}
 
-	class StdIORedirectInit {
-	public:
-		StdIORedirectInit() {
-			//fprintf(stderr, "redirecting...\n");
-			// create exit event for redirect worker
-			redirect_should_exit = CreateEvent(nullptr, true, false, nullptr);
-			if (redirect_should_exit == INVALID_HANDLE_VALUE) {
-				fprintf(stderr, "%s\n", win32_error(GetLastError(), "create event").what());
-				return;
-			}
-			// create redirections
-			redirections.push_back(std::make_unique<Redirection>(stderr, 256));
-			redirections.push_back(std::make_unique<Redirection>(stdout, 256));
-			// start thread
-			redirect_worker = std::thread(doStdIORedirection);
+	void stdIORedirectInit() {
+		//fprintf(stderr, "redirecting...\n");
+		// create exit event for redirect worker
+		redirectExitEvent() = CreateEvent(nullptr, true, false, nullptr);
+		if (redirectExitEvent() == INVALID_HANDLE_VALUE) {
+			fprintf(stderr, "%s\n", win32_error(GetLastError(), "create event").what());
+			return;
 		}
+		// create redirections
+		activeRedirections().push_back(std::make_unique<Redirection>(stderr, 256));
+		activeRedirections().push_back(std::make_unique<Redirection>(stdout, 256));
+		// start thread
+		redirectWorker() = std::thread(doStdIORedirection);
+	}
 
-		~StdIORedirectInit() {
-			if (redirect_worker.joinable()) {
-				//fprintf(stdout, "goodbye from redirected stdout\n");
-				//fprintf(stderr, "goodbye from redirected stderr\n");
-				//fflush(stdout);
-				//fflush(stderr);
-				// dup handles, freopen to conout$, flush pipes
-				std::vector<HANDLE> hdups;
-				for (const auto &rd : redirections) {
-					HANDLE hpipew;
-					// get pipe write handle duplicate
-					// freopen causes the original to be closed
-					DuplicateHandle(
-						GetCurrentProcess(),
-						HANDLE(_get_osfhandle(_fileno(rd->file()))),
-						GetCurrentProcess(),
-						&hpipew,
-						0,
-						false,
-						DUPLICATE_SAME_ACCESS
-					);
-					hdups.push_back(hpipew);
-					// freopen file to conout$
-					freopen("CONOUT$", "w", rd->file());
-					// flush
-					FlushFileBuffers(hpipew);
-				}
-				// signal worker should exit
-				SetEvent(redirect_should_exit);
-				// wait for worker to stop
-				redirect_worker.join();
-				// close duplicate handles
-				for (HANDLE h : hdups) {
-					CloseHandle(h);
-				}
-				//fprintf(stderr, "redirection stopped\n");
+	void stdIORedirectTerminate() {
+		if (redirectWorker().joinable()) {
+			//fprintf(stdout, "goodbye from redirected stdout\n");
+			//fprintf(stderr, "goodbye from redirected stderr\n");
+			//fflush(stdout);
+			//fflush(stderr);
+			// dup handles, freopen to conout$, flush pipes
+			std::vector<HANDLE> hdups;
+			for (const auto &rd : activeRedirections()) {
+				HANDLE hpipew;
+				// get pipe write handle duplicate
+				// freopen causes the original to be closed
+				DuplicateHandle(
+					GetCurrentProcess(),
+					HANDLE(_get_osfhandle(_fileno(rd->file()))),
+					GetCurrentProcess(),
+					&hpipew,
+					0,
+					false,
+					DUPLICATE_SAME_ACCESS
+				);
+				hdups.push_back(hpipew);
+				// freopen file to conout$
+				freopen("CONOUT$", "w", rd->file());
+				// flush
+				FlushFileBuffers(hpipew);
 			}
+			// signal worker should exit
+			SetEvent(redirectExitEvent());
+			// wait for worker to stop
+			redirectWorker().join();
+			// close duplicate handles
+			for (HANDLE h : hdups) {
+				CloseHandle(h);
+			}
+			//fprintf(stderr, "redirection stopped\n");
 		}
-	};
-
-	StdIORedirectInit stdio_redirect_init_obj;
-
+	}
+	
 #elif defined(GECOM_STDIO_REDIRECT_POSIX)
 #define GECOM_TERMINAL_ANSI
+	// TODO posix-land stdio redirect
+	
+	void stdIORedirectInit() {
 
-// TODO posix-land stdio redirect
+	}
+
+	void stdIORedirectTerminate() {
+
+	}
+
+#else
+	// no redirection possible
+	void stdIORedirectInit() { }
+	void stdIORedirectTerminate() { }
 
 #endif // GECOM_STDIO_REDIRECT_*
 
@@ -591,12 +607,26 @@ namespace {
 
 namespace gecom {
 
+	size_t TerminalInit::refcount = 0;
+
+	TerminalInit::TerminalInit() {
+		if (refcount++ == 0) {
+			stdIORedirectInit();
+		}
+	}
+
+	TerminalInit::~TerminalInit() {
+		if (--refcount == 0) {
+			stdIORedirectTerminate();
+		}
+	}
+
 	namespace terminal {
 
 		int width(FILE *fp) {
 #if defined(GECOM_STDIO_REDIRECT_WIN32)
 			// stdout and stderr are redirected, try find real terminal width
-			for (const auto &r : redirections) {
+			for (const auto &r : activeRedirections()) {
 				if (r->file() == fp) {
 					return r->terminalWidth();
 				}

@@ -8,6 +8,14 @@
 
 namespace gecom {
 
+	class SectionInit {
+	private:
+		static size_t refcount;
+	public:
+		SectionInit();
+		~SectionInit();
+	};
+
 	class section_guard {
 	private:
 		bool m_entered = false;
@@ -64,14 +72,18 @@ namespace gecom {
 
 		static const section * current() noexcept;
 
-		static bool threadProfiling();
-		static void threadProfiling(bool);
+		static bool currentProfiling();
+		static void currentProfiling(bool);
 
 		static bool defaultProfiling();
 		static void defaultProfiling(bool);
 
 	};
 
+}
+
+namespace {
+	gecom::SectionInit section_init_obj;
 }
 
 #endif // GECOM_SECTION_HPP

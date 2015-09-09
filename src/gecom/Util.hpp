@@ -80,11 +80,15 @@ namespace gecom {
 			priority_queue(priority_queue &&) = default;
 			priority_queue & operator=(priority_queue &&) = default;
 
-			bool empty() {
+			bool empty() const noexcept {
 				return m_data.empty();
 			}
 
-			size_t size() {
+			void clear() noexcept {
+				m_data.clear();
+			}
+
+			size_t size() const noexcept {
 				return m_data.size();
 			}
 
