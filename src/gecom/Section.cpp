@@ -21,11 +21,11 @@ namespace {
 		bool current_profiling { sectionStatics().default_profiling };
 
 		// this does not get leaked if sections are used correctly
+		// this is a pointer because msvc doesn't like it otherwise
 		std::vector<gecom::section> *sections = nullptr;
 	};
 
 	auto & sectionTLStatics() {
-		// TODO am i using TLS in a correct way?
 		static thread_local SectionTLStatics s;
 		return s;
 	}
@@ -117,7 +117,7 @@ namespace gecom {
 	SectionInit::~SectionInit() {
 		if (--refcount == 0) {
 			// section statics about to be destroyed
-			// nothing to do
+			assert(!sectionTLStatics().sections);
 		}
 	}
 
