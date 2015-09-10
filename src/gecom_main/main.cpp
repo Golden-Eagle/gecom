@@ -32,7 +32,7 @@ int main() {
 	win->makeCurrent();
 
 	auto sub = win->onKeyPress.subscribe([](const key_event &e) {
-		Log::info("Key") << e.key;
+		Log::info("Key") << e.key << ", " << e.euid;
 		return false;
 	});
 

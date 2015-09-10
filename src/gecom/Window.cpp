@@ -3,6 +3,8 @@
 #include <cstdlib>
 #include <map>
 #include <sstream>
+#include <atomic>
+#include <algorithm>
 
 #include "Window.hpp"
 
@@ -14,6 +16,8 @@ namespace gecom {
 
 		struct WindowStatics {
 			Event<window_event> onGlobalEvent;
+			atomic<uintmax_t> next_event_uid { 1 };
+			joystick_state joystates[GLFW_JOYSTICK_LAST + 1];
 		};
 
 		auto & windowStatics() {
@@ -167,6 +171,71 @@ namespace gecom {
 			e.dispatch(*win);
 		}
 
+		void pollJoystickEvents() {
+			assertMainThread();
+			auto &joystates = windowStatics().joystates;
+			for (int joy = GLFW_JOYSTICK_1; joy <= GLFW_JOYSTICK_LAST; ++joy) {
+				if (glfwJoystickPresent(joy)) {
+					// dispatch presence event?
+					if (joystates[joy].token != joy) {
+						// was not present previously, is now
+						joystates[joy].token = joy;
+						joystates[joy].name = glfwGetJoystickName(joy);
+						joystick_presence_event e;
+						e.state = joystates[joy];
+						e.present = true;
+						Window::dispatchGlobalEvent(e);
+					}
+					// prepare next state for joystick
+					joystick_state nextstate;
+					nextstate.token = joy;
+					nextstate.name = move(joystates[joy].name);
+					// read joystick buttons
+					int buttoncount = 0;
+					const unsigned char *buttons = glfwGetJoystickButtons(joy, &buttoncount);
+					if (buttoncount && buttons) {
+						// copy buttons to next state
+						nextstate.buttons.assign(buttons, buttons + buttoncount);
+					}
+					// read joystick axes
+					int axiscount = 0;
+					const float *axes = glfwGetJoystickAxes(joy, &axiscount);
+					if (axiscount && axes) {
+						// copy axes to next state
+						nextstate.axes.assign(axes, axes + axiscount);
+					}
+					// dispatch button events
+					unsigned minbuttoncount = std::min<unsigned>(joystates[joy].buttons.size(), nextstate.buttons.size());
+					for (unsigned i = 0; i < minbuttoncount; ++i) {
+						if (nextstate.buttons[i] != joystates[joy].buttons[i]) {
+							// button changed
+							joystick_button_event e;
+							e.state = nextstate;
+							e.button = i;
+							e.action = nextstate.buttons[i] ? GLFW_PRESS : GLFW_RELEASE;
+							Window::dispatchGlobalEvent(e);
+						}
+					}
+					// dispatch joystick event
+					joystick_event e;
+					e.state = nextstate;
+					Window::dispatchGlobalEvent(e);
+					// replace state with next state
+					joystates[joy] = move(nextstate);
+				} else {
+					// dispatch presence event?
+					if (joystates[joy].token == joy) {
+						// joystick was present previously, is no longer
+						joystick_presence_event e;
+						e.state = joystates[joy];
+						e.present = false;
+						Window::dispatchGlobalEvent(e);
+						joystates[joy].token = -1;
+					}
+				}
+			}
+		}
+
 		void callbackErrorGLFW(int error, const char *description) {
 			Log::error("GLFW") << "Error " << error << " : " << description;
 		}
@@ -292,50 +361,60 @@ namespace gecom {
 
 	}
 
+	uintmax_t makeWindowEventUID() {
+		return windowStatics().next_event_uid++;
+	}
+
 	void WindowEventProxy::dispatchWindowRefreshEvent(const window_refresh_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
 		window_refresh_event e2(e);
 		e2.proxy = this;
-		m_last_win = e2.window;
 		onRefresh.notify(e2);
 		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchWindowCloseEvent(const window_close_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
 		window_close_event e2(e);
 		e2.proxy = this;
-		m_last_win = e2.window;
 		onClose.notify(e2);
 		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchWindowPosEvent(const window_pos_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
 		window_pos_event e2(e);
 		e2.proxy = this;
-		m_last_win = e2.window;
 		onEvent.notify(e);
 		onMove.notify(e);
 	}
 
 	void WindowEventProxy::dispatchWindowSizeEvent(const window_size_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
 		window_size_event e2(e);
 		e2.proxy = this;
-		m_last_win = e2.window;
 		onResize.notify(e2);
 		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchFramebufferSizeEvent(const framebuffer_size_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
 		framebuffer_size_event e2(e);
 		e2.proxy = this;
-		m_last_win = e2.window;
 		onFramebufferResize.notify(e2);
 		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchWindowFocusEvent(const window_focus_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
 		window_focus_event e2(e);
 		e2.proxy = this;
-		m_last_win = e2.window;
 		if (e2.focused) {
 			onFocusGain.notify(e2);
 		} else {
@@ -346,9 +425,10 @@ namespace gecom {
 	}
 
 	void WindowEventProxy::dispatchWindowIconEvent(const window_icon_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
 		window_icon_event e2(e);
 		e2.proxy = this;
-		m_last_win = e2.window;
 		if (e2.iconified) {
 			onIconMinimize.notify(e2);
 		} else {
@@ -359,9 +439,10 @@ namespace gecom {
 	}
 
 	void WindowEventProxy::dispatchMouseEvent(const mouse_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
 		mouse_event e2(e);
 		e2.proxy = this;
-		m_last_win = e2.window;
 		m_last_mouse_win = e2.window;
 		if (e2.window) m_mpos[e2.window] = e2.pos;
 		if (e.entered) onMouseEnter.notify(e2);
@@ -371,9 +452,10 @@ namespace gecom {
 	}
 
 	void WindowEventProxy::dispatchMouseButtonEvent(const mouse_button_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
 		mouse_button_event e2(e);
 		e2.proxy = this;
-		m_last_win = e2.window;
 		m_last_mouse_win = e2.window;
 		if (e2.window) m_mpos[e2.window] = e2.pos;
 		// i dont think mouse buttons get repeats, but whatever
@@ -389,9 +471,10 @@ namespace gecom {
 	}
 
 	void WindowEventProxy::dispatchMouseScrollEvent(const mouse_scroll_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
 		mouse_scroll_event e2(e);
 		e2.proxy = this;
-		m_last_win = e2.window;
 		m_last_mouse_win = e2.window;
 		if (e2.window) m_mpos[e2.window] = e2.pos;
 		onMouseScroll.notify(e2);
@@ -399,9 +482,10 @@ namespace gecom {
 	}
 
 	void WindowEventProxy::dispatchKeyEvent(const key_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
 		key_event e2(e);
 		e2.proxy = this;
-		m_last_win = e2.window;
 		m_last_key_win = e2.window;
 		if (e2.action == GLFW_PRESS || e2.action == GLFW_REPEAT) {
 			setKeyState(e2.key, true);
@@ -415,10 +499,54 @@ namespace gecom {
 	}
 
 	void WindowEventProxy::dispatchCharEvent(const char_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
 		char_event e2(e);
 		e2.proxy = this;
-		m_last_win = e2.window;
 		onChar.notify(e2);
+		onEvent.notify(e2);
+	}
+
+	void WindowEventProxy::dispatchJoystickEvent(const joystick_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
+		joystick_event e2(e);
+		e2.proxy = this;
+		m_joystates[e2.state.token] = e2.state;
+		onJoystick.notify(e2);
+		onEvent.notify(e2);
+	}
+
+	void WindowEventProxy::dispatchJoystickPresenceEvent(const joystick_presence_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
+		joystick_presence_event e2(e);
+		e2.proxy = this;
+		m_joystates[e2.state.token] = e2.state;
+		if (e2.present) {
+			onJoystickPresenceGain.notify(e2);
+		} else {
+			// mark as not present in our state table
+			m_joystates[e2.state.token].token = -1;
+			onJoystickPresenceLose.notify(e2);
+		}
+		onJoystickPresence.notify(e2);
+		onEvent.notify(e2);
+	}
+
+	void WindowEventProxy::dispatchJoystickButtonEvent(const joystick_button_event &e) {
+		if (e.euid <= m_last_euid) return;
+		m_last_euid = e.euid;
+		joystick_button_event e2(e);
+		e2.proxy = this;
+		m_joystates[e2.state.token] = e2.state;
+		// joystick buttons probs aren't going to get repeats, but whatever
+		if (e2.action == GLFW_PRESS || e2.action == GLFW_REPEAT) {
+			onJoystickButtonPress.notify(e2);
+		} else {
+			onJoystickButtonRelease.notify(e2);
+		}
+		onJoystickButton.notify(e2);
 		onEvent.notify(e2);
 	}
 
@@ -513,6 +641,7 @@ namespace gecom {
 	void Window::pollEvents() {
 		assertMainThread();
 		glfwPollEvents();
+		pollJoystickEvents();
 	}
 
 	create_window_args::operator Window * () {

@@ -10,12 +10,14 @@
 #ifndef GECOM_WINDOW_HPP
 #define GECOM_WINDOW_HPP
 
+#include <cstdint>
 #include <string>
 #include <stdexcept>
 #include <unordered_map>
 #include <memory>
 #include <utility>
 #include <bitset>
+#include <vector>
 
 #include "GL.hpp"
 #include "Log.hpp"
@@ -224,6 +226,29 @@ namespace gecom {
 		return r;
 	}
 
+	// joystick input state
+	struct joystick_state {
+		int token = -1;
+		std::string name;
+		std::vector<float> axes;
+		std::vector<bool> buttons;
+
+		float axis(unsigned i) const {
+			return i < axes.size() ? axes[i] : 0.f;
+		}
+
+		bool testButton(unsigned b) const {
+			return b < buttons.size() ? buttons[b] : false;
+		}
+
+		bool resetButton(unsigned b) {
+			if (b >= buttons.size()) return false;
+			bool r = buttons[b];
+			buttons[b] = false;
+			return r;
+		}
+	};
+
 	// window forward declaration
 	class Window;
 
@@ -244,6 +269,9 @@ namespace gecom {
 	struct mouse_scroll_event;
 	struct key_event;
 	struct char_event;
+	struct joystick_event;
+	struct joystick_presence_event;
+	struct joystick_button_event;
 
 	// virtual event dispatch
 	class WindowEventDispatcher {
@@ -260,8 +288,20 @@ namespace gecom {
 		virtual void dispatchMouseScrollEvent(const mouse_scroll_event &) { }
 		virtual void dispatchKeyEvent(const key_event &) { }
 		virtual void dispatchCharEvent(const char_event &) { }
+		virtual void dispatchJoystickEvent(const joystick_event &) { }
+		virtual void dispatchJoystickPresenceEvent(const joystick_presence_event &) { }
+		virtual void dispatchJoystickButtonEvent(const joystick_button_event &) { }
 		virtual ~WindowEventDispatcher() { }
 	};
+
+	// monotonically increasing event uid.
+	// used to prevent duplicate dispatch through complex proxy configurations.
+	// we'll just hope the counter never overflows.
+	// at 100 events/frame, 60 frames/second:
+	//  - 32-bit counter = ~198 hours
+	//  - 64-bit counter = ~97,000,000 years
+	// before overflow.
+	uintmax_t makeWindowEventUID();
 
 	// base window event
 	struct window_event {
@@ -271,6 +311,9 @@ namespace gecom {
 		// the proxy that sent this event; should not be null when received by an event observer
 		// proxies set this automatically when an event is dispatched to them
 		WindowEventProxy *proxy = nullptr;
+
+		// event uid
+		uintmax_t euid = makeWindowEventUID();
 
 		// dispatch to virtual event dispatcher
 		virtual void dispatch(WindowEventDispatcher &wed) const = 0;
@@ -388,6 +431,32 @@ namespace gecom {
 			wed.dispatchCharEvent(*this);
 		}
 	};
+	
+	// joystick state updated
+	struct joystick_event : public window_event {
+		joystick_state state;
+
+		virtual void dispatch(WindowEventDispatcher &wed) const override {
+			wed.dispatchJoystickEvent(*this);
+		}
+	};
+
+	struct joystick_presence_event : public joystick_event {
+		bool present = false;
+
+		virtual void dispatch(WindowEventDispatcher &wed) const override {
+			wed.dispatchJoystickPresenceEvent(*this);
+		}
+	};
+
+	struct joystick_button_event : public joystick_event {
+		int button = 0;
+		int action = 0;
+
+		virtual void dispatch(WindowEventDispatcher &wed) const override {
+			wed.dispatchJoystickButtonEvent(*this);
+		}
+	};
 
 	// handles dispatched events and forwards them to subscribers
 	// not actually thread-safe at the moment, so keep event dispatch to the main thread.
@@ -395,10 +464,11 @@ namespace gecom {
 	protected:
 		std::bitset<GLFW_KEY_LAST + 1> m_keystates;
 		std::bitset<GLFW_MOUSE_BUTTON_LAST + 1> m_mbstates;
+		joystick_state m_joystates[GLFW_JOYSTICK_LAST + 1];
 		std::unordered_map<const Window *, point2d> m_mpos;
-		const Window *m_last_win = nullptr;
 		const Window *m_last_key_win = nullptr;
 		const Window *m_last_mouse_win = nullptr;
+		uintmax_t m_last_euid = 0;
 
 		void setKeyState(int key, bool state) {
 			if (size_t(key) > GLFW_KEY_LAST) return;
@@ -434,6 +504,13 @@ namespace gecom {
 		Event<key_event> onKeyPress;
 		Event<key_event> onKeyRelease;
 		Event<char_event> onChar;
+		Event<joystick_event> onJoystick;
+		Event<joystick_presence_event> onJoystickPresence;
+		Event<joystick_presence_event> onJoystickPresenceGain;
+		Event<joystick_presence_event> onJoystickPresenceLose;
+		Event<joystick_button_event> onJoystickButton;
+		Event<joystick_button_event> onJoystickButtonPress;
+		Event<joystick_button_event> onJoystickButtonRelease;
 
 		// helper method; subscribes an event dispatcher to onEvent
 		subscription_ptr subscribeEventDispatcher(std::shared_ptr<WindowEventDispatcher> wed) {
@@ -455,6 +532,9 @@ namespace gecom {
 		virtual void dispatchMouseScrollEvent(const mouse_scroll_event &) override;
 		virtual void dispatchKeyEvent(const key_event &) override;
 		virtual void dispatchCharEvent(const char_event &) override;
+		virtual void dispatchJoystickEvent(const joystick_event &) override;
+		virtual void dispatchJoystickPresenceEvent(const joystick_presence_event &) override;
+		virtual void dispatchJoystickButtonEvent(const joystick_button_event &) override;
 
 		void reset() {
 			m_keystates.reset();
@@ -482,10 +562,6 @@ namespace gecom {
 			return r;
 		}
 
-		const Window * lastWindow() const {
-			return m_last_win;
-		}
-
 		const Window * lastKeyWindow() const {
 			return m_last_key_win;
 		}
@@ -502,6 +578,18 @@ namespace gecom {
 
 		point2d mousePosition() const {
 			return mousePosition(lastMouseWindow());
+		}
+
+		bool joystickPresent(int token) const {
+			return m_joystates[token].token == token;
+		}
+
+		const joystick_state & joystick(int token) const {
+			return m_joystates[token];
+		}
+
+		joystick_state & joystick(int token) {
+			return m_joystates[token];
 		}
 	};
 
@@ -531,7 +619,6 @@ namespace gecom {
 			if (m_handle == nullptr) throw window_error("GLFW window handle is null");
 			(void) share;
 			initialize();
-			m_last_win = this;
 			m_last_key_win = this;
 			m_last_mouse_win = this;
 		}
