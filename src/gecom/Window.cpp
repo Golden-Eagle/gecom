@@ -510,6 +510,11 @@ namespace gecom {
 		windowStatics().onGlobalEvent.notify(e);
 	}
 
+	void Window::pollEvents() {
+		assertMainThread();
+		glfwPollEvents();
+	}
+
 	create_window_args::operator Window * () {
 		assertMainThread();
 		section_guard sec("Window");

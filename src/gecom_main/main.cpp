@@ -37,7 +37,7 @@ int main() {
 	});
 
 	while (!win->shouldClose()) {
-		glfwPollEvents();
+		Window::pollEvents();
 		if (win->testKey(GLFW_KEY_SPACE)) {
 			//Log::info() << "SPACEBAR!!!";
 			//Log::info() << win->mousePosition().x << ", " << win->mousePosition().y;

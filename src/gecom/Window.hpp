@@ -661,6 +661,9 @@ namespace gecom {
 
 		// main thread only (at the moment)
 		static void dispatchGlobalEvent(const window_event &);
+
+		// main thread only
+		static void pollEvents();
 	};
 
 	class create_window_args {
