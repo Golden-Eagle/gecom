@@ -12,7 +12,7 @@
 
 #include <string>
 #include <stdexcept>
-#include <map>
+#include <unordered_map>
 #include <memory>
 #include <utility>
 #include <bitset>
@@ -387,7 +387,10 @@ namespace gecom {
 	protected:
 		std::bitset<GLFW_KEY_LAST + 1> m_keystates;
 		std::bitset<GLFW_MOUSE_BUTTON_LAST + 1> m_mbstates;
-		point2d m_mpos;
+		std::unordered_map<const Window *, point2d> m_mpos;
+		const Window *m_last_win = nullptr;
+		const Window *m_last_key_win = nullptr;
+		const Window *m_last_mouse_win = nullptr;
 
 		void setKeyState(int key, bool state) {
 			if (size_t(key) > GLFW_KEY_LAST) return;
@@ -445,33 +448,52 @@ namespace gecom {
 		virtual void dispatchKeyEvent(const key_event &) override;
 		virtual void dispatchCharEvent(const char_event &) override;
 
-		void clear() {
+		void reset() {
 			m_keystates.reset();
 			m_mbstates.reset();
+			m_mpos.clear();
 		}
 
-		bool getKey(unsigned k) const {
+		bool testKey(unsigned k) const {
 			return m_keystates.test(k);
 		}
 
-		bool clearKey(unsigned k) {
+		bool resetKey(unsigned k) {
 			bool r = m_keystates.test(k);
 			m_keystates.reset(k);
 			return r;
 		}
 
-		bool getMouseButton(unsigned b) const {
+		bool testMouseButton(unsigned b) const {
 			return m_mbstates.test(b);
 		}
 
-		bool clearMouseButton(unsigned b) {
+		bool resetMouseButton(unsigned b) {
 			bool r = m_mbstates.test(b);
 			m_mbstates.reset(b);
 			return r;
 		}
 
+		const Window * lastWindow() const {
+			return m_last_win;
+		}
+
+		const Window * lastKeyWindow() const {
+			return m_last_key_win;
+		}
+
+		const Window * lastMouseWindow() const {
+			return m_last_mouse_win;
+		}
+
+		point2d mousePosition(const Window *win) const {
+			auto it = m_mpos.find(win);
+			if (it == m_mpos.end()) return point2d(-1, -1);
+			return it->second;
+		}
+
 		point2d mousePosition() const {
-			return m_mpos;
+			return mousePosition(lastMouseWindow());
 		}
 	};
 
@@ -488,9 +510,6 @@ namespace gecom {
 		// the wrapped window
 		GLFWwindow* m_handle;
 
-		// shader manager, shared (potentially) with other windows
-		std::shared_ptr<ShaderManager> m_shaderman;
-
 		void initialize();
 		void destroy();
 
@@ -499,12 +518,10 @@ namespace gecom {
 		Window(GLFWwindow *handle_, const Window *share = nullptr) : m_handle(handle_) {
 			if (m_handle == nullptr) throw window_error("GLFW window handle is null");
 			(void) share;
-			if (share) {
-				//m_shaderman = share->shaderManager();
-			} else {
-				//m_shaderman = std::make_shared<ShaderManager>(".");
-			}
 			initialize();
+			m_last_win = this;
+			m_last_key_win = this;
+			m_last_mouse_win = this;
 		}
 		
 		GLFWwindow * handle() const {
@@ -606,13 +623,6 @@ namespace gecom {
 			return glfwGetWindowAttrib(m_handle, a);
 		}
 
-		// the returned shader manager has the process's cwd as its first source directory.
-		// it is shared with all other windows whose contexts share GL object namespaces.
-		// as such, adding a source directory can affect code obtaining shaders from sharing windows.
-		const std::shared_ptr<ShaderManager> & shaderManager() const {
-			return m_shaderman;
-		}
-
 		// windows must only be destroyed from the main thread
 		~Window() {
 			destroy();
@@ -627,7 +637,7 @@ namespace gecom {
 		std::string m_title = "";
 		GLFWmonitor *m_monitor = nullptr;
 		const Window *m_share = nullptr;
-		std::map<int, int> m_hints;
+		std::unordered_map<int, int> m_hints;
 
 	public:
 		create_window_args() {

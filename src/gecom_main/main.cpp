@@ -33,16 +33,12 @@ int main() {
 
 	win->makeCurrent();
 
-	auto sub = win->onKeyPress.subscribe([](const key_event &e) {
-		Log::info("Key") << e.window;
-		return false;
-	});
-
 
 	while (!win->shouldClose()) {
 		glfwPollEvents();
-		if (win->getKey(GLFW_KEY_SPACE)) {
+		if (win->testKey(GLFW_KEY_SPACE)) {
 			Log::info() << "SPACEBAR!!!";
+			Log::info() << win->mousePosition().x << ", " << win->mousePosition().y;
 		}
 		win->swapBuffers();
 		this_thread::sleep_for(5ms);

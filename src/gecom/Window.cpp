@@ -308,6 +308,7 @@ namespace gecom {
 	void WindowEventProxy::dispatchWindowRefreshEvent(const window_refresh_event &e) {
 		window_refresh_event e2(e);
 		e2.proxy = this;
+		m_last_win = e2.window;
 		onRefresh.notify(e2);
 		onEvent.notify(e2);
 	}
@@ -315,11 +316,15 @@ namespace gecom {
 	void WindowEventProxy::dispatchWindowCloseEvent(const window_close_event &e) {
 		window_close_event e2(e);
 		e2.proxy = this;
+		m_last_win = e2.window;
 		onClose.notify(e2);
 		onEvent.notify(e2);
 	}
 
 	void WindowEventProxy::dispatchWindowPosEvent(const window_pos_event &e) {
+		window_pos_event e2(e);
+		e2.proxy = this;
+		m_last_win = e2.window;
 		onEvent.notify(e);
 		onMove.notify(e);
 	}
@@ -327,6 +332,7 @@ namespace gecom {
 	void WindowEventProxy::dispatchWindowSizeEvent(const window_size_event &e) {
 		window_size_event e2(e);
 		e2.proxy = this;
+		m_last_win = e2.window;
 		onResize.notify(e2);
 		onEvent.notify(e2);
 	}
@@ -334,6 +340,7 @@ namespace gecom {
 	void WindowEventProxy::dispatchFramebufferSizeEvent(const framebuffer_size_event &e) {
 		framebuffer_size_event e2(e);
 		e2.proxy = this;
+		m_last_win = e2.window;
 		onFramebufferResize.notify(e2);
 		onEvent.notify(e2);
 	}
@@ -341,6 +348,7 @@ namespace gecom {
 	void WindowEventProxy::dispatchWindowFocusEvent(const window_focus_event &e) {
 		window_focus_event e2(e);
 		e2.proxy = this;
+		m_last_win = e2.window;
 		if (e2.focused) {
 			onFocusGain.notify(e2);
 		} else {
@@ -353,6 +361,7 @@ namespace gecom {
 	void WindowEventProxy::dispatchWindowIconEvent(const window_icon_event &e) {
 		window_icon_event e2(e);
 		e2.proxy = this;
+		m_last_win = e2.window;
 		if (e2.iconified) {
 			onIconMinimize.notify(e2);
 		} else {
@@ -365,7 +374,9 @@ namespace gecom {
 	void WindowEventProxy::dispatchMouseEvent(const mouse_event &e) {
 		mouse_event e2(e);
 		e2.proxy = this;
-		m_mpos = e2.pos;
+		m_last_win = e2.window;
+		m_last_mouse_win = e2.window;
+		if (e2.window) m_mpos[e2.window] = e2.pos;
 		if (e.entered) onMouseEnter.notify(e2);
 		if (e.exited) onMouseExit.notify(e2);
 		onMouseMove.notify(e2);
@@ -375,7 +386,9 @@ namespace gecom {
 	void WindowEventProxy::dispatchMouseButtonEvent(const mouse_button_event &e) {
 		mouse_button_event e2(e);
 		e2.proxy = this;
-		m_mpos = e2.pos;
+		m_last_win = e2.window;
+		m_last_mouse_win = e2.window;
+		if (e2.window) m_mpos[e2.window] = e2.pos;
 		// i dont think mouse buttons get repeats, but whatever
 		if (e2.action == GLFW_PRESS || e2.action == GLFW_REPEAT) {
 			setMouseButtonState(e2.button, true);
@@ -391,7 +404,9 @@ namespace gecom {
 	void WindowEventProxy::dispatchMouseScrollEvent(const mouse_scroll_event &e) {
 		mouse_scroll_event e2(e);
 		e2.proxy = this;
-		m_mpos = e2.pos;
+		m_last_win = e2.window;
+		m_last_mouse_win = e2.window;
+		if (e2.window) m_mpos[e2.window] = e2.pos;
 		onMouseScroll.notify(e2);
 		onEvent.notify(e2);
 	}
@@ -399,6 +414,8 @@ namespace gecom {
 	void WindowEventProxy::dispatchKeyEvent(const key_event &e) {
 		key_event e2(e);
 		e2.proxy = this;
+		m_last_win = e2.window;
+		m_last_key_win = e2.window;
 		if (e2.action == GLFW_PRESS || e2.action == GLFW_REPEAT) {
 			setKeyState(e2.key, true);
 			onKeyPress.notify(e2);
@@ -413,6 +430,7 @@ namespace gecom {
 	void WindowEventProxy::dispatchCharEvent(const char_event &e) {
 		char_event e2(e);
 		e2.proxy = this;
+		m_last_win = e2.window;
 		onChar.notify(e2);
 		onEvent.notify(e2);
 	}
