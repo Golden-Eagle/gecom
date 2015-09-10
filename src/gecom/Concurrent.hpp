@@ -17,6 +17,7 @@
 #include <memory>
 #include <type_traits>
 
+#include "Util.hpp"
 #include "Uncopyable.hpp"
 #include "Log.hpp"
 

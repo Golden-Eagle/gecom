@@ -166,28 +166,6 @@ namespace gecom {
 			Log::error("GLAER") << "Error: " << msg;
 		}
 
-		// init GLFW global state.
-		// this should only be called from the main thread.
-		// does nothing if already initialised.
-		void init_glfw() {
-			static bool done = false;
-			if (!done) {
-				Log::info() << "GLFW initializing...";
-				// this is safe to call before glfwInit()
-				glfwSetErrorCallback(callbackErrorGLFW);
-				if (!glfwInit()) {
-					Log::critical() << "GLFW initialization failed";
-					// screw catching this, ever
-					std::abort();
-				}
-				// set GLAER callbacks here too, but don't init anything yet
-				glaerSetErrorCallback(callbackErrorGLAER);
-				glaerSetCurrentContextProvider(getCurrentGlaerContext);
-				Log::info().verbosity(0) << "GLFW initialized";
-				done = true;
-			}
-		}
-
 		// GL callback for debug information
 		// gl.xml and glDebugMessageControl.xml disagree on whether userParam should point to const or not
 		void APIENTRY callbackDebugGL(
@@ -519,7 +497,6 @@ namespace gecom {
 		if (m_hints[GLFW_OPENGL_DEBUG_CONTEXT]) {
 			Log::info().verbosity(0) << "Requesting debug GL context";
 		}
-		init_glfw();
 		glfwDefaultWindowHints();
 		//GLenum gl_err = glGetError();
 		//gecom::log("Window") % 0 << "GLerror: " << gl_err;
@@ -536,5 +513,30 @@ namespace gecom {
 		return new Window(handle, m_share);
 	}
 
+	size_t WindowInit::refcount = 0;
 
+	WindowInit::WindowInit() {
+		if (refcount++ == 0) {
+			section_guard sec("Window");
+			Log::info() << "GLFW initializing...";
+			// this is safe to call before glfwInit()
+			glfwSetErrorCallback(callbackErrorGLFW);
+			if (!glfwInit()) {
+				Log::critical() << "GLFW initialization failed";
+				// screw catching this, ever
+				std::abort();
+			}
+			// set GLAER callbacks here too, but don't init anything yet
+			glaerSetErrorCallback(callbackErrorGLAER);
+			glaerSetCurrentContextProvider(getCurrentGlaerContext);
+			Log::info() << "GLFW initialized";
+		}
+	}
+
+	WindowInit::~WindowInit() {
+		if (--refcount == 0) {
+			glfwTerminate();
+			Log::info("Window") << "GLFW deinitialized";
+		}
+	}
 }

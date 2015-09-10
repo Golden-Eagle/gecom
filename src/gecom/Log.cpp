@@ -169,10 +169,6 @@ namespace {
 		// other log outputs
 		std::mutex output_mutex;
 		std::unordered_set<gecom::LogOutput *> outputs;
-
-		~LogStatics() {
-			gecom::Log::info() << "Log deinitialized";
-		}
 	};
 
 	auto & logStatics() {
@@ -305,7 +301,7 @@ namespace gecom {
 	LogInit::~LogInit() {
 		if (--refcount == 0) {
 			// log statics about to be destroyed
-			// nothing to do
+			Log::info() << "Log deinitialized";
 		}
 	}
 }

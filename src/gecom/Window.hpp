@@ -18,12 +18,19 @@
 #include <bitset>
 
 #include "GL.hpp"
-#include "Shader.hpp"
 #include "Log.hpp"
 #include "Concurrent.hpp"
 #include "Uncopyable.hpp"
 
 namespace gecom {
+
+	class WindowInit {
+	private:
+		static size_t refcount;
+	public:
+		WindowInit();
+		~WindowInit();
+	};
 
 	inline void checkGL() {
 		GLenum err = glGetError();
@@ -684,6 +691,10 @@ namespace gecom {
 	inline create_window_args createWindow() {
 		return create_window_args();
 	}
+}
+
+namespace {
+	gecom::WindowInit window_init_obj;
 }
 
 #endif

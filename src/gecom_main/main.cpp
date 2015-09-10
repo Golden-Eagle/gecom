@@ -44,6 +44,4 @@ int main() {
 		this_thread::sleep_for(5ms);
 	}
 
-	glfwTerminate();
-
 }
