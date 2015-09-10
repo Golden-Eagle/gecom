@@ -19,8 +19,6 @@ int main() {
 
 	Log::info().verbosity(0) << "Starting...";
 
-	assertMainThread();
-
 
 	async::invoke(0s, [] {
 		this_thread::sleep_for(5s);

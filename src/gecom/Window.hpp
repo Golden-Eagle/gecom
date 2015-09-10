@@ -511,7 +511,8 @@ namespace gecom {
 	};
 
 	// Thin wrapper around GLFW windowing.
-	// Each window can only be used on one thread at once.
+	// Each window can be current on any one thread at once (GL),
+	// but most functions can only be called on the main thread.
 	class Window : public WindowEventProxy {
 	private:
 		// the wrapped window
@@ -523,6 +524,7 @@ namespace gecom {
 	public:
 		// ctor: takes ownership of a GLFW window handle
 		Window(GLFWwindow *handle_, const Window *share = nullptr) : m_handle(handle_) {
+			assertMainThread();
 			if (m_handle == nullptr) throw window_error("GLFW window handle is null");
 			(void) share;
 			initialize();
@@ -536,34 +538,41 @@ namespace gecom {
 		}
 
 		void pos(int x, int y) {
+			assertMainThread();
 			glfwSetWindowPos(m_handle, x, y);
 		}
 
 		void pos(const point2i &p) {
+			assertMainThread();
 			glfwSetWindowPos(m_handle, p.x, p.y);
 		}
 
 		point2i pos() const {
+			assertMainThread();
 			point2i p;
 			glfwGetWindowPos(m_handle, &p.x, &p.y);
 			return p;
 		}
 
 		void size(int w, int h) {
+			assertMainThread();
 			glfwSetWindowSize(m_handle, w, h);
 		}
 
 		void size(const size2i &s) {
+			assertMainThread();
 			glfwSetWindowSize(m_handle, s.w, s.h);
 		}
 
 		size2i size() const {
+			assertMainThread();
 			size2i s;
 			glfwGetWindowSize(m_handle, &s.w, &s.h);
 			return s;
 		}
 
 		size2i framebufferSize() const {
+			assertMainThread();
 			size2i s;
 			glfwGetFramebufferSize(m_handle, &s.w, &s.h);
 		}
@@ -575,12 +584,14 @@ namespace gecom {
 		}
 
 		int width() const {
+			assertMainThread();
 			int w, h;
 			glfwGetWindowSize(m_handle, &w, &h);
 			return w;
 		}
 
 		int framebufferWidth() const {
+			assertMainThread();
 			int w, h;
 			glfwGetFramebufferSize(m_handle, &w, &h);
 			return w;
@@ -593,22 +604,26 @@ namespace gecom {
 		}
 
 		int height() const {
+			assertMainThread();
 			int w, h;
 			glfwGetWindowSize(m_handle, &w, &h);
 			return h;
 		}
 
 		int framebufferHeight() const {
+			assertMainThread();
 			int w, h;
 			glfwGetFramebufferSize(m_handle, &w, &h);
 			return h;
 		}
 
 		void title(const std::string &s) {
+			assertMainThread();
 			glfwSetWindowTitle(m_handle, s.c_str());
 		}
 
 		void visible(bool b) {
+			assertMainThread();
 			if (b) {
 				glfwShowWindow(m_handle);
 			} else {
@@ -616,25 +631,30 @@ namespace gecom {
 			}
 		}
 
+		// can be called from any thread
 		bool shouldClose() const {
 			return glfwWindowShouldClose(m_handle);
 		}
 
+		// can be called from any thread
 		void makeCurrent();
 
+		// can be called from any thread
 		void swapBuffers() const {
 			glfwSwapBuffers(m_handle);
 		}
 
 		int attrib(int a) const {
+			assertMainThread();
 			return glfwGetWindowAttrib(m_handle, a);
 		}
 
-		// windows must only be destroyed from the main thread
 		~Window() {
+			assertMainThread();
 			destroy();
 		}
 
+		// can be called from any thread
 		static Window * current();
 	};
 

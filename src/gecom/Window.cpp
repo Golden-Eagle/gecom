@@ -422,6 +422,7 @@ namespace gecom {
 	}
 
 	void Window::initialize() {
+		assertMainThread();
 		// set ALL the callbacks
 		glfwSetWindowPosCallback(m_handle, callbackWindowPos);
 		glfwSetWindowSizeCallback(m_handle, callbackWindowSize);
@@ -441,7 +442,7 @@ namespace gecom {
 	}
 
 	void Window::destroy() {
-		// must only be called from the main thread
+		assertMainThread();
 		delete getWindowData(m_handle);
 		glfwDestroyWindow(m_handle);
 	}
@@ -454,8 +455,7 @@ namespace gecom {
 		if (!wd->init_done) {
 			Log::info() << "GLAER initializing...";
 			if (!glaerInitCurrentContext()) {
-				Log::error() << "GLAER initialization failed";
-				glfwTerminate();
+				Log::critical() << "GLAER initialization failed";
 				std::abort();
 			}
 			// clear any GL errors from init
@@ -468,7 +468,7 @@ namespace gecom {
 			Log::info() << "GL_RENDERER: " << glGetString(GL_RENDERER);
 			Log::info() << "GL_VERSION: " << glGetString(GL_VERSION);
 			Log::info() << "GL_SHADING_LANGUAGE_VERSION: " << glGetString(GL_SHADING_LANGUAGE_VERSION);
-			Log::info().verbosity(0) << "GLAER initialized";
+			Log::info() << "GLAER initialized";
 			wd->init_done = true;
 			// enable GL_ARB_debug_output if available
 			if (glfwExtensionSupported("GL_ARB_debug_output")) {
@@ -492,6 +492,7 @@ namespace gecom {
 
 	// this should only be called from the main thread
 	create_window_args::operator Window * () {
+		assertMainThread();
 		section_guard sec("Window");
 		Log::info().verbosity(0) << "Creating window... [title=" << m_title << "]";
 		if (m_hints[GLFW_OPENGL_DEBUG_CONTEXT]) {
