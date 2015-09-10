@@ -30,6 +30,7 @@ namespace gecom {
 		void callbackWindowPos(GLFWwindow *handle, int x, int y) {
 			Window *win = getWindow(handle);
 			window_pos_event e;
+			e.window = win;
 			e.proxy = win;
 			e.pos = point2i(x, y);
 			e.dispatch(*win);
@@ -38,6 +39,7 @@ namespace gecom {
 		void callbackWindowSize(GLFWwindow *handle, int w, int h) {
 			Window *win = getWindow(handle);
 			window_size_event e;
+			e.window = win;
 			e.proxy = win;
 			e.size = size2i(w, h);
 			e.dispatch(*win);
@@ -46,6 +48,7 @@ namespace gecom {
 		void callbackWindowClose(GLFWwindow *handle) {
 			Window *win = getWindow(handle);
 			window_close_event e;
+			e.window = win;
 			e.proxy = win;
 			e.dispatch(*win);
 		}
@@ -53,6 +56,7 @@ namespace gecom {
 		void callbackWindowRefresh(GLFWwindow *handle) {
 			Window *win = getWindow(handle);
 			window_refresh_event e;
+			e.window = win;
 			e.proxy = win;
 			e.dispatch(*win);
 		}
@@ -60,6 +64,7 @@ namespace gecom {
 		void callbackWindowFocus(GLFWwindow *handle, int focused) {
 			Window *win = getWindow(handle);
 			window_focus_event e;
+			e.window = win;
 			e.proxy = win;
 			e.focused = focused;
 			e.dispatch(*win);
@@ -68,6 +73,7 @@ namespace gecom {
 		void callbackWindowIconify(GLFWwindow *handle, int iconified) {
 			Window *win = getWindow(handle);
 			window_icon_event e;
+			e.window = win;
 			e.proxy = win;
 			e.iconified = iconified;
 			e.dispatch(*win);
@@ -76,6 +82,7 @@ namespace gecom {
 		void callbackFramebufferSize(GLFWwindow *handle, int w, int h) {
 			Window *win = getWindow(handle);
 			framebuffer_size_event e;
+			e.window = win;
 			e.proxy = win;
 			e.size.w = w;
 			e.size.h = h;
@@ -85,6 +92,7 @@ namespace gecom {
 		void callbackMouseButton(GLFWwindow *handle, int button, int action, int mods) {
 			Window *win = getWindow(handle);
 			mouse_button_event e;
+			e.window = win;
 			e.proxy = win;
 			e.button = button;
 			e.action = action;
@@ -98,6 +106,7 @@ namespace gecom {
 		void callbackCursorPos(GLFWwindow *handle, double x, double y) {
 			Window *win = getWindow(handle);
 			mouse_event e;
+			e.window = win;
 			e.proxy = win;
 			e.pos = point2d(x, y);
 			e.entered = false;
@@ -108,6 +117,7 @@ namespace gecom {
 		void callbackCursorEnter(GLFWwindow *handle, int entered) {
 			Window *win = getWindow(handle);
 			mouse_event e;
+			e.window = win;
 			e.proxy = win;
 			glfwGetCursorPos(handle, &e.pos.x, &e.pos.y);
 			e.entered = entered;
@@ -118,6 +128,7 @@ namespace gecom {
 		void callbackScroll(GLFWwindow *handle, double xoffset, double yoffset) {
 			Window *win = getWindow(handle);
 			mouse_scroll_event e;
+			e.window = win;
 			e.proxy = win;
 			glfwGetCursorPos(handle, &e.pos.x, &e.pos.y);
 			e.entered = false;
@@ -129,6 +140,7 @@ namespace gecom {
 		void callbackKey(GLFWwindow *handle, int key, int scancode, int action, int mods) {
 			Window *win = getWindow(handle);
 			key_event e;
+			e.window = win;
 			e.proxy = win;
 			e.key = key;
 			e.scancode = scancode;
@@ -140,6 +152,7 @@ namespace gecom {
 		void callbackChar(GLFWwindow *handle, unsigned codepoint) {
 			Window *win = getWindow(handle);
 			char_event e;
+			e.window = win;
 			e.proxy = win;
 			e.codepoint = codepoint;
 			e.dispatch(*win);
@@ -480,7 +493,7 @@ namespace gecom {
 	
 	Window * Window::current() {
 		GLFWwindow *handle = glfwGetCurrentContext();
-		if (handle == nullptr) return nullptr;
+		if (!handle) return nullptr;
 		return getWindow(handle);
 	}
 

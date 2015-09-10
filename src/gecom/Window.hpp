@@ -258,6 +258,11 @@ namespace gecom {
 
 	// base window event
 	struct window_event {
+		// the window this event originated from; may be null
+		Window *window = nullptr;
+
+		// the proxy that sent this event; should not be null when received by an event observer
+		// proxies set this automatically when an event is dispatched to them
 		WindowEventProxy *proxy = nullptr;
 
 		// dispatch to virtual event dispatcher
