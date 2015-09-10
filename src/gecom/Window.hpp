@@ -445,6 +445,11 @@ namespace gecom {
 		virtual void dispatchKeyEvent(const key_event &) override;
 		virtual void dispatchCharEvent(const char_event &) override;
 
+		void clear() {
+			m_keystates.reset();
+			m_mbstates.reset();
+		}
+
 		bool getKey(unsigned k) const {
 			return m_keystates.test(k);
 		}

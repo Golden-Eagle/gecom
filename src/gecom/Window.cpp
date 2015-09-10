@@ -344,9 +344,6 @@ namespace gecom {
 		if (e2.focused) {
 			onFocusGain.notify(e2);
 		} else {
-			// lost focus, release all keys and mouse buttons
-			m_keystates.reset();
-			m_mbstates.reset();
 			onFocusLose.notify(e2);
 		}
 		onFocus.notify(e2);
