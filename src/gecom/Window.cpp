@@ -12,6 +12,15 @@ namespace gecom {
 
 	namespace {
 
+		struct WindowStatics {
+			Event<window_event> onGlobalEvent;
+		};
+
+		auto & windowStatics() {
+			static WindowStatics s;
+			return s;
+		}
+
 		struct WindowData {
 			Window *window;
 			GlaerContext context;
@@ -439,6 +448,11 @@ namespace gecom {
 		glfwSetCharCallback(m_handle, callbackChar);
 		// create a windowdata object
 		glfwSetWindowUserPointer(m_handle, new WindowData(this));
+		// subscribe to global event
+		m_global_event_sub = windowStatics().onGlobalEvent.subscribe([this](const window_event &e) {
+			e.dispatch(*this);
+			return false;
+		});
 	}
 
 	void Window::destroy() {
@@ -490,7 +504,12 @@ namespace gecom {
 		return getWindow(handle);
 	}
 
-	// this should only be called from the main thread
+	void Window::dispatchGlobalEvent(const window_event &e) {
+		// main thread only at the moment
+		assertMainThread();
+		windowStatics().onGlobalEvent.notify(e);
+	}
+
 	create_window_args::operator Window * () {
 		assertMainThread();
 		section_guard sec("Window");
@@ -499,8 +518,6 @@ namespace gecom {
 			Log::info().verbosity(0) << "Requesting debug GL context";
 		}
 		glfwDefaultWindowHints();
-		//GLenum gl_err = glGetError();
-		//gecom::log("Window") % 0 << "GLerror: " << gl_err;
 		for (auto me : m_hints) {
 			glfwWindowHint(me.first, me.second);
 		}
@@ -519,6 +536,9 @@ namespace gecom {
 	WindowInit::WindowInit() {
 		if (refcount++ == 0) {
 			section_guard sec("Window");
+			// ensure statics initialized
+			windowStatics();
+			// init glfw
 			Log::info() << "GLFW initializing...";
 			// this is safe to call before glfwInit()
 			glfwSetErrorCallback(callbackErrorGLFW);

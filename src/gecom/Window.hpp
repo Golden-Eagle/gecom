@@ -321,7 +321,7 @@ namespace gecom {
 
 	// window focused / unfocused
 	struct window_focus_event : public window_event {
-		bool focused;
+		bool focused = false;
 
 		virtual void dispatch(WindowEventDispatcher &wed) const override {
 			wed.dispatchWindowFocusEvent(*this);
@@ -330,7 +330,7 @@ namespace gecom {
 
 	// window iconified (minimized) / deiconified (restored)
 	struct window_icon_event : public window_event {
-		bool iconified;
+		bool iconified = false;
 
 		virtual void dispatch(WindowEventDispatcher &wed) const override {
 			wed.dispatchWindowIconEvent(*this);
@@ -340,8 +340,8 @@ namespace gecom {
 	// mouse moved
 	struct mouse_event : public window_event {
 		point2d pos;
-		bool entered;
-		bool exited;
+		bool entered = false;
+		bool exited = false;
 
 		virtual void dispatch(WindowEventDispatcher &wed) const override {
 			wed.dispatchMouseEvent(*this);
@@ -350,9 +350,9 @@ namespace gecom {
 
 	// mouse button pressed / released
 	struct mouse_button_event : public mouse_event {
-		int button;
-		int action;
-		int mods;
+		int button = 0;
+		int action = 0;
+		int mods = 0;
 
 		virtual void dispatch(WindowEventDispatcher &wed) const override {
 			wed.dispatchMouseButtonEvent(*this);
@@ -370,10 +370,10 @@ namespace gecom {
 
 	// key pressed / released
 	struct key_event : public window_event {
-		int key;
-		int scancode;
-		int action;
-		int mods;
+		int key = 0;
+		int scancode = 0;
+		int action = 0;
+		int mods = 0;
 
 		virtual void dispatch(WindowEventDispatcher &wed) const override {
 			wed.dispatchKeyEvent(*this);
@@ -382,7 +382,7 @@ namespace gecom {
 
 	// unicode character typed
 	struct char_event : public window_event {
-		unsigned codepoint;
+		unsigned codepoint = 0;
 
 		virtual void dispatch(WindowEventDispatcher &wed) const override {
 			wed.dispatchCharEvent(*this);
@@ -390,6 +390,7 @@ namespace gecom {
 	};
 
 	// handles dispatched events and forwards them to subscribers
+	// not actually thread-safe at the moment, so keep event dispatch to the main thread.
 	class WindowEventProxy : public WindowEventDispatcher, private Uncopyable {
 	protected:
 		std::bitset<GLFW_KEY_LAST + 1> m_keystates;
@@ -518,13 +519,15 @@ namespace gecom {
 		// the wrapped window
 		GLFWwindow* m_handle;
 
+		// subscription to global event dispatch mechanism
+		subscription_ptr m_global_event_sub;
+
 		void initialize();
 		void destroy();
 
 	public:
 		// ctor: takes ownership of a GLFW window handle
 		Window(GLFWwindow *handle_, const Window *share = nullptr) : m_handle(handle_) {
-			assertMainThread();
 			if (m_handle == nullptr) throw window_error("GLFW window handle is null");
 			(void) share;
 			initialize();
@@ -650,12 +653,14 @@ namespace gecom {
 		}
 
 		~Window() {
-			assertMainThread();
 			destroy();
 		}
 
 		// can be called from any thread
 		static Window * current();
+
+		// main thread only (at the moment)
+		static void dispatchGlobalEvent(const window_event &);
 	};
 
 	class create_window_args {
