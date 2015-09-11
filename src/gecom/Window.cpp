@@ -172,6 +172,7 @@ namespace gecom {
 		}
 
 		void pollJoystickEvents() {
+			section_guard sec("Window");
 			assertMainThread();
 			auto &joystates = windowStatics().joystates;
 			for (int joy = GLFW_JOYSTICK_1; joy <= GLFW_JOYSTICK_LAST; ++joy) {
@@ -181,6 +182,7 @@ namespace gecom {
 						// was not present previously, is now
 						joystates[joy].token = joy;
 						joystates[joy].name = glfwGetJoystickName(joy);
+						Log::info() << "Joystick " << joy << " (" << joystates[joy].name << ") " << "connected";
 						joystick_presence_event e;
 						e.state = joystates[joy];
 						e.present = true;
@@ -238,6 +240,7 @@ namespace gecom {
 						e.state = joystates[joy];
 						e.present = false;
 						Window::dispatchGlobalEvent(e);
+						Log::info() << "Joystick " << joy << " (" << joystates[joy].name << ") " << "disconnected";
 						joystates[joy].token = -1;
 					}
 				}
