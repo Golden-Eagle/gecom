@@ -1,5 +1,6 @@
 
 
+#include <cmath>
 #include <thread>
 #include <chrono>
 #include <iostream>
@@ -20,12 +21,6 @@ int main() {
 	Log::info().verbosity(0) << "Starting...";
 
 
-	async::invoke(0s, [] {
-		this_thread::sleep_for(5s);
-		Log::info() << "ASYNC!";
-	});
-
-
 	
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).contextVersion(4, 1).visible(true);
 
@@ -33,6 +28,24 @@ int main() {
 
 	auto sub = win->onKeyPress.subscribe([](const key_event &e) {
 		Log::info("Key") << e.key << ", " << e.euid;
+		return false;
+	});
+
+
+	auto sub2 = win->onJoystick.subscribe([](const joystick_event &e) {
+		if (fabs(e.state.axis(0)) > 0.1f || fabs(e.state.axis(1)) > 0.1f) {
+			Log::info("Joystick") << e.state.axis(0) << ", " << e.state.axis(1);
+		}
+		return false;
+	});
+
+	auto sub3 = win->onJoystickPresence.subscribe([](const joystick_presence_event &e) {
+		Log::info("Joystick") << e.state.name << " [" << e.state.token << "]" << (e.present ? " connected" : " disconnected");
+		return false;
+	});
+
+	auto sub4 = win->onJoystickButtonPress.subscribe([](const joystick_button_event &e) {
+		Log::info("Joystick") << "button " << e.button;
 		return false;
 	});
 
@@ -50,4 +63,5 @@ int main() {
 		this_thread::sleep_for(5ms);
 	}
 
+	delete win;
 }

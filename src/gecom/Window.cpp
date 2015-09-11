@@ -195,19 +195,27 @@ namespace gecom {
 					const unsigned char *buttons = glfwGetJoystickButtons(joy, &buttoncount);
 					if (buttoncount && buttons) {
 						// copy buttons to next state
-						nextstate.buttons.assign(buttons, buttons + buttoncount);
+						nextstate.buttons.reset();
+						buttoncount = min<int>(nextstate.buttons.size(), buttoncount);
+						for (unsigned i = 0; i < unsigned(buttoncount); ++i) {
+							nextstate.buttons[i] = buttons[i];
+						}
 					}
 					// read joystick axes
 					int axiscount = 0;
 					const float *axes = glfwGetJoystickAxes(joy, &axiscount);
 					if (axiscount && axes) {
 						// copy axes to next state
-						nextstate.axes.assign(axes, axes + axiscount);
+						nextstate.axes.fill(0.f);
+						axiscount = min<int>(nextstate.axes.size(), axiscount);
+						for (unsigned i = 0; i < unsigned(axiscount); ++i) {
+							nextstate.axes[i] = axes[i];
+						}
 					}
 					// dispatch button events
-					unsigned minbuttoncount = std::min<unsigned>(joystates[joy].buttons.size(), nextstate.buttons.size());
-					for (unsigned i = 0; i < minbuttoncount; ++i) {
-						if (nextstate.buttons[i] != joystates[joy].buttons[i]) {
+					auto buttonchanges = joystates[joy].buttons ^ nextstate.buttons;
+					for (unsigned i = 0; i < nextstate.buttons.size(); ++i) {
+						if (buttonchanges[i]) {
 							// button changed
 							joystick_button_event e;
 							e.state = nextstate;

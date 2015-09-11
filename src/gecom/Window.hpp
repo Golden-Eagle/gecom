@@ -17,7 +17,7 @@
 #include <memory>
 #include <utility>
 #include <bitset>
-#include <vector>
+#include <array>
 
 #include "GL.hpp"
 #include "Log.hpp"
@@ -230,8 +230,17 @@ namespace gecom {
 	struct joystick_state {
 		int token = -1;
 		std::string name;
-		std::vector<float> axes;
-		std::vector<bool> buttons;
+		std::array<float, 16> axes;
+		std::bitset<64> buttons;
+
+		joystick_state() {
+			axes.fill(0.f);
+		}
+
+		joystick_state(const joystick_state &) = default;
+		joystick_state(joystick_state &&) = default;
+		joystick_state & operator=(const joystick_state &) = default;
+		joystick_state & operator=(joystick_state &&) = default;
 
 		float axis(unsigned i) const {
 			return i < axes.size() ? axes[i] : 0.f;
