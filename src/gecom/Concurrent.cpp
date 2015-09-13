@@ -119,7 +119,7 @@ namespace gecom {
 			};
 
 			auto & currentWorker() {
-				static thread_local Worker *cw { nullptr };
+				static thread_local Worker *cw = nullptr;
 				return cw;
 			}
 
@@ -150,8 +150,6 @@ namespace gecom {
 			class BackgroundScheduler {
 			private:
 				struct Statics {
-					// current worker pointer must be valid until all workers have finished
-					bool ensure_init_current_worker { (currentWorker(), true) };
 					atomic<bool> should_exit { false };
 					atomic<size_t> max_active_tasks { 1 };
 					mutex pool_mutex;
