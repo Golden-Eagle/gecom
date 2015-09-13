@@ -1,19 +1,30 @@
 /*
- * GECom Shader Manager
+ * GECOM Shader Manager
  *
  * Extra preprocessor directives:
  *	- #include "..."  : include file relative to directory containing current file
  *	- #include <...>  : include file relative to directories known to the shader manager
- *      #include resolves #version directives.
- *      Failed #include directives are replaced with #error directives.
- *
- *  - #shader type    : specify shader type(s) a file should be compiled as
- *	    Valid values for type are:
+ *      #include resolves #version directives. Failed #include directives are replaced
+ *      with #error directives, and as such can safely be used with #if etc.
+ *      Malformed #include directives will be replaced with #error directives.
+ *  - #shader stage   : specify shader stage(s) source should be compiled for
+ *	    Valid values for stage are:
  *	     - vertex
- *       - fragment
- *       - geometry
  *       - tess_control
  *       - tess_evaluation
+ *       - geometry
+ *       - fragment
+ *       - compute
+ *      Use of #shader with #if etc is supported. Malformed #shader directives will be
+ *      replaced with #error directives.
+ *
+ * The following macros are defined only when compiling for the corresponding shader stage:
+ *  - _VERTEX_
+ *  - _TESS_CONTROL_
+ *  - _TESS_EVALUATION_
+ *  - _GEOMETRY_
+ *  - _FRAGMENT_
+ *  - _COMPUTE_
  *
  * The line numbers reported in compiler messages should be correct provided the compiler
  * follows the GLSL spec for the version in question regarding the #line directive.
@@ -40,7 +51,22 @@
 
 namespace gecom {
 
-	
+	class shader_error : public std::runtime_error {
+	public:
+		explicit shader_error(std::string what_ = "shader error") : std::runtime_error(what_) { }
+	};
+
+	class shader_compile_error : public shader_error {
+	public:
+		explicit shader_compile_error(const std::string &what_ = "shader compilation failed") : shader_error(what_) { }
+	};
+
+	class shader_link_error : public shader_error {
+	public:
+		explicit shader_link_error(const std::string &what_ = "shader program linking failed") : shader_error(what_) { }
+	};
+
+
 
 }
 
