@@ -47,6 +47,7 @@
 #include <vector>
 #include <unordered_map>
 #include <utility>
+#include <type_traits>
 
 #include "Util.hpp"
 #include "Uncopyable.hpp"
@@ -130,23 +131,24 @@ namespace gecom {
 			return *this;
 		}
 
-		shader_spec & define(std::string identifier, uintmax_t val) {
+		template <typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
+		shader_spec & define(std::string identifier, T val) {
 			std::ostringstream oss;
-			oss << val;
+			oss << val << (std::is_signed<T>::value ? "" : "u");
 			define(std::move(identifier), oss.str());
 			return *this;
 		}
 
-		shader_spec & define(std::string identifier, intmax_t val) {
+		shader_spec & define(std::string identifier, float val) {
 			std::ostringstream oss;
-			oss << val;
+			oss << std::setprecision(9) << val;
 			define(std::move(identifier), oss.str());
 			return *this;
 		}
 
 		shader_spec & define(std::string identifier, double val) {
 			std::ostringstream oss;
-			oss << std::setprecision(17) << val;
+			oss << std::setprecision(17) << val << "lf";
 			define(std::move(identifier), oss.str());
 			return *this;
 		}
