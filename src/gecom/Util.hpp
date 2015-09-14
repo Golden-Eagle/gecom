@@ -31,6 +31,16 @@ namespace gecom {
 			return wsback <= wsfront ? std::string() : std::string(wsfront, wsback);
 		}
 
+		// check if a string is a valid C-like identifier
+		inline bool isIdentifier(const std::string &s) {
+			if (s.empty()) return false;
+			if (!isalpha(s[0]) && s[0] != '_') return false;
+			for (char c : s) {
+				if (!isalnum(c) && c != '_') return false;
+			}
+			return true;
+		}
+
 		// unused() base case
 		inline void unused() { }
 

@@ -37,12 +37,18 @@
 #ifndef GECOM_SHADER_HPP
 #define GECOM_SHADER_HPP
 
+#include <cassert>
 #include <cstdint>
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <stdexcept>
 #include <chrono>
+#include <vector>
+#include <unordered_map>
+#include <utility>
 
+#include "Util.hpp"
 #include "Uncopyable.hpp"
 #include "GL.hpp"
 
@@ -66,7 +72,123 @@ namespace gecom {
 		explicit shader_link_error(const std::string &what_ = "shader program linking failed") : shader_error(what_) { }
 	};
 
+	class ShaderManager;
 
+	class shader_spec {
+		friend class ShaderManager;
+	private:
+		std::vector<std::string> m_files;
+		std::vector<std::string> m_texts;
+		std::unordered_map<std::string, std::string> m_defines;
+		mutable ShaderManager *m_shaderman = nullptr;
+		mutable GLuint m_prog = 0;
+		mutable std::chrono::steady_clock::time_point m_timestamp;
+
+	public:
+		shader_spec() { }
+
+		shader_spec(const shader_spec &) = default;
+		shader_spec & operator=(const shader_spec &) = default;
+
+		shader_spec(shader_spec &&other) :
+			m_files(std::move(other.m_files)),
+			m_texts(std::move(other.m_texts)),
+			m_defines(std::move(other.m_defines)),
+			m_timestamp(other.m_timestamp),
+			m_prog(other.m_prog)
+		{
+			other.m_prog = 0;
+		}
+
+		shader_spec & operator=(shader_spec &&other) {
+			m_files = std::move(other.m_files);
+			m_texts = std::move(other.m_texts);
+			m_defines = std::move(other.m_defines);
+			m_timestamp = other.m_timestamp;
+			m_prog = other.m_prog;
+			other.m_prog = 0;
+		}
+
+		shader_spec & file(std::string fname) {
+			m_files.push_back(std::move(fname));
+			return *this;
+		}
+
+		shader_spec & text(std::string text) {
+			m_texts.push_back(std::move(text));
+			return *this;
+		}
+
+		shader_spec & define(std::string identifier, std::string tokens) {
+			assert(util::isIdentifier(identifier));
+			m_defines[std::move(identifier)] = std::move(tokens);
+			return *this;
+		}
+
+		shader_spec & define(std::string identifier) {
+			define(std::move(identifier), "");
+			return *this;
+		}
+
+		shader_spec & define(std::string identifier, uintmax_t val) {
+			std::ostringstream oss;
+			oss << val;
+			define(std::move(identifier), oss.str());
+			return *this;
+		}
+
+		shader_spec & define(std::string identifier, intmax_t val) {
+			std::ostringstream oss;
+			oss << val;
+			define(std::move(identifier), oss.str());
+			return *this;
+		}
+
+		shader_spec & define(std::string identifier, double val) {
+			std::ostringstream oss;
+			oss << std::setprecision(17) << val;
+			define(std::move(identifier), oss.str());
+			return *this;
+		}
+
+		const auto & files() const {
+			return m_files;
+		}
+
+		const auto & texts() const {
+			return m_texts;
+		}
+
+		const auto & defines() const {
+			return m_defines;
+		}
+
+		auto & files() {
+			return m_files;
+		}
+
+		auto & texts() {
+			return m_texts;
+		}
+
+		auto & defines() {
+			return m_defines;
+		}
+
+		inline bool operator==(const shader_spec &other) const {
+			return m_files == other.m_files && m_texts == other.m_texts && m_defines == other.m_defines;
+		}
+
+		inline bool operator!=(const shader_spec &other) const {
+			return !(*this == other);
+		}
+	};
+
+	struct shader_spec_hash {
+		size_t operator()(const shader_spec &spec) noexcept {
+			// TODO shader_spec hash function
+		}
+	};
 
 }
 
