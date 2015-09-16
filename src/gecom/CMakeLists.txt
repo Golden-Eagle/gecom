@@ -23,6 +23,7 @@ set(sources
 	"Terminal.cpp"
 	"Platform.hpp"
 	"Platform.cpp"
+	"Serialization.hpp"
 )
 
 add_library(gecom ${sources})
