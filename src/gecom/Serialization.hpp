@@ -4,8 +4,22 @@
 
 #include <cstdint>
 #include <climits>
-#include <iostream>
 #include <type_traits>
+#include <string>
+#include <iostream>
+#include <sstream>
+#include <fstream>
+#include <utility>
+#include <tuple>
+#include <array>
+#include <bitset>
+#include <vector>
+#include <list>
+#include <deque>
+#include <set>
+#include <map>
+#include <unordered_set>
+#include <unordered_map>
 
 namespace gecom {
 
@@ -43,6 +57,18 @@ namespace gecom {
 		return e;
 	}
 
+	template <typename IntT, typename = std::enable_if_t<std::is_integral<IntT>::value>>
+	inline IntT flipEndian(IntT x) {
+		static constexpr IntT mask = (IntT(1) << CHAR_BIT) - 1;
+		IntT r = 0;
+		for (int i = 0; i < sizeof(IntT); ++i) {
+			r <<= CHAR_BIT;
+			r |= x & mask;
+			x >>= CHAR_BIT;
+		}
+		return r;
+	}
+
 	class serializer_base {
 	public:
 		using iostate = std::ios_base::iostate;
@@ -57,6 +83,13 @@ namespace gecom {
 		std::streambuf *m_buf = nullptr;
 		endian m_endianness = endian::big;
 		iostate m_state = badbit;
+
+		// swap everything except rdbuf
+		void swap(serializer_base &other) noexcept {
+			using std::swap;
+			swap(m_endianness, other.m_endianness);
+			swap(m_state, other.m_state);
+		}
 
 	public:
 		serializer_base() { }
@@ -139,52 +172,225 @@ namespace gecom {
 	};
 
 	class serializer : public serializer_base {
-	private:
-		void put_forward(const char *pstart, size_t count) {
-			if (m_buf->sputn(pstart, count) < count) setstate(badbit);
-		}
-
-		void put_reverse(const char *pstart, size_t count) {
-			// TODO optimize
-			for (const char *p = pstart + count; p-- > pstart; ) {
-				if (m_buf->sputc(*p) == traits_type::eof()) {
-					setstate(badbit);
-					return;
-				}
-			}
-		}
-
 	public:
 		using serializer_base::serializer_base;
 
+		serializer() { }
+
+		serializer(serializer &&) = default;
+		serializer & operator=(serializer &&) = default;
+
+		void write(const char *pstart, size_t count) {
+			if (fail()) return;
+			if (m_buf->sputn(pstart, count) < count) setstate(badbit);
+		}
+
 		template <typename IntT, typename = std::enable_if_t<std::is_integral<IntT>::value>>
-		void putInt(IntT x) {
-			if (m_endianness == cpuEndian()) {
-				put_forward(reinterpret_cast<char *>(&x), sizeof(IntT));
-			} else {
-				put_reverse(reinterpret_cast<char *>(&x), sizeof(IntT));
-			}
+		void put(IntT x) {
+			x = m_endianness == cpuEndian() ? x : flipEndian(x);
+			write(reinterpret_cast<char *>(&x), sizeof(IntT));
 		}
 
-		template <typename FloatT, typename = std::enable_if_t<std::is_floating_point<FloatT>::value>>
-		void putFloat(FloatT x) {
-			if (m_endianness = fpuEndian()) {
-				put_forward(reinterpret_cast<char *>(&x), sizeof(FloatT));
-			} else {
-				put_reverse(reinterpret_cast<char *>(&x), sizeof(FloatT));
-			}
+		void put(float x) {
+			static_assert(sizeof(float) == sizeof(uint32_t), "assumed sizeof(float) == sizeof(uint32_t)");
+			uint32_t x2 = reinterpret_cast<uint32_t &>(x);
+			x2 = m_endianness == fpuEndian() ? x2 : flipEndian(x2);
+			write(reinterpret_cast<char *>(&x2), sizeof(uint32_t));
 		}
 
-		// TODO
+		void put(double x) {
+			static_assert(sizeof(double) == sizeof(uint64_t), "assumed sizeof(double) == sizeof(uint64_t)");
+			uint64_t x2 = reinterpret_cast<uint64_t &>(x);
+			x2 = m_endianness == fpuEndian() ? x2 : flipEndian(x2);
+			write(reinterpret_cast<char *>(&x2), sizeof(uint64_t));
+		}
+		
+		template <typename IntT, typename = std::enable_if_t<std::is_integral<IntT>::value>>
+		serializer & operator<<(IntT x) {
+			put(x);
+			return *this;
+		}
+
+		serializer & operator<<(float x) {
+			put(x);
+			return *this;
+		}
+
+		serializer & operator<<(double x) {
+			put(x);
+			return *this;
+		}
+
+		serializer & operator<<(std::streambuf *sb) {
+			std::ostream o(rdbuf());
+			o << sb;
+			if (!o) setstate(badbit);
+			return *this;
+		}
 	};
+
+	serializer & operator<<(serializer &out, const std::string &s) {
+		out << s.size();
+		out.write(s.c_str(), s.size());
+		return out;
+	}
+
+	template <typename T0, typename T1>
+	serializer & operator<<(serializer &out, const std::pair<T0, T1> &p) {
+		return out << p.first << p.second;
+	}
+
+	namespace detail {
+
+		template <size_t Remaining>
+		struct serialize_tuple_impl {
+			template <typename TupleT>
+			static void go(serializer &out, const TupleT &tup) {
+				out << std::get<(std::tuple_size<TupleT>::value - Remaining)>(tup);
+				serialize_tuple_impl<Remaining - 1>(out, tup);
+			}
+		};
+
+		template <>
+		struct serialize_tuple_impl<0> {
+			template <typename TupleT>
+			static void go(serializer &, const TupleT &) { }
+		};
+
+	}
+
+	template <typename ...TR>
+	serializer & operator<<(serializer &out, const std::tuple<TR...> t) {
+		detail::serialize_tuple_impl<std::tuple_size<std::tuple<TR...>>::value>::go(out, t);
+		return out;
+	}
+
+	template <typename T, size_t Size>
+	serializer & operator<<(serializer &out, const std::array<T, Size> &a) {
+		for (const auto &x : a) {
+			out << x;
+		}
+		return out;
+	}
+
+	template <size_t Size>
+	serializer & operator<<(serializer &out, const std::bitset<Size> &s) {
+		// TODO serialize bitset
+		return out;
+	}
+
+	template <typename T>
+	serializer & operator<<(serializer &out, const std::vector<T> &v) {
+		out << v.size();
+		for (const auto &x : v) {
+			out << x;
+		}
+		return out;
+	}
+
+	template <typename T>
+	serializer & operator<<(serializer &out, const std::list<T> &v) {
+		out << v.size();
+		for (const auto &x : v) {
+			out << x;
+		}
+		return out;
+	}
+
+	template <typename T>
+	serializer & operator<<(serializer &out, const std::deque<T> &v) {
+		out << v.size();
+		for (const auto &x : v) {
+			out << x;
+		}
+		return out;
+	}
+
+	template <typename T>
+	serializer & operator<<(serializer &out, const std::set<T> &v) {
+		out << v.size();
+		for (const auto &x : v) {
+			out << x;
+		}
+		return out;
+	}
+
+	template <typename T>
+	serializer & operator<<(serializer &out, const std::unordered_set<T> &v) {
+		out << v.size();
+		for (const auto &x : v) {
+			out << x;
+		}
+		return out;
+	}
+
+	template <typename KeyT, typename ValueT>
+	serializer & operator<<(serializer &out, const std::map<KeyT, ValueT> &v) {
+		out << v.size();
+		for (const auto &x : v) {
+			out << x;
+		}
+		return out;
+	}
+
+	template <typename KeyT, typename ValueT>
+	serializer & operator<<(serializer &out, const std::unordered_map<KeyT, ValueT> &v) {
+		out << v.size();
+		for (const auto &x : v) {
+			out << x;
+		}
+		return out;
+	}
 
 	class deserializer : public serializer_base {
 	public:
 		using serializer_base::serializer_base;
 
-		// TODO
+		// TODO deserializer
 	};
 
+	class string_serializer : public serializer {
+	private:
+		mutable std::stringbuf m_stringbuf;
+
+	public:
+		string_serializer() { }
+
+		string_serializer(const std::string &str) : m_stringbuf(str) {
+			serializer::rdbuf(&m_stringbuf);
+		}
+
+		string_serializer(string_serializer &&other) : m_stringbuf(std::move(other.m_stringbuf)) {
+			serializer::rdbuf(&m_stringbuf);
+			serializer_base::swap(other);
+		}
+
+		string_serializer & operator=(string_serializer &&other) {
+			m_stringbuf = std::move(other.m_stringbuf);
+			serializer_base::swap(other);
+			return *this;
+		}
+
+		std::stringbuf * rdbuf() const {
+			return &m_stringbuf;
+		}
+
+		std::string str() const {
+			return m_stringbuf.str();
+		}
+	};
+
+	class file_serializer : public serializer {
+		// TODO filer serializer
+	};
+
+	class string_deserializer : public deserializer {
+		// TODO string deserializer
+	};
+
+	class file_deserializer : public deserializer {
+		// TODO file deserializer
+	};
 }
 
 #endif // GECOM_SERIALIZATION_HPP
