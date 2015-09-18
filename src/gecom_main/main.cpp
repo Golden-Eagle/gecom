@@ -28,7 +28,7 @@ int main() {
 	Log::info() << "fpu endianness: " << fpuEndian();
 
 	string s = "helloooo\4ooo wooooooo\6ooooooo\5\5\5orld!";
-	Log::info() << util::hexdumpc(s);
+	Log::info() << util::hexdump(s);
 
 
 

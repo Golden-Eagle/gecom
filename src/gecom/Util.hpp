@@ -138,7 +138,7 @@ namespace gecom {
 			bool m_color = false;
 
 			// print bytes as hex
-			static void printHex(std::ostream &out, const unsigned char *pdata, ptrdiff_t size, int pad, bool color) {
+			static void printHex(std::ostream &out, const unsigned char *pdata, ptrdiff_t size, int pad) {
 				char oldfill = out.fill();
 				out.fill('0');
 				const unsigned char *pend = pdata + size;
@@ -153,16 +153,16 @@ namespace gecom {
 			}
 
 			// print bytes as string, escaping unprintables
-			static void printSafe(std::ostream &out, const unsigned char *pdata, ptrdiff_t size, int pad, bool color) {
+			static void printSafe(std::ostream &out, const unsigned char *pdata, ptrdiff_t size, int pad) {
 				const unsigned char *pend = pdata + size;
 				for (; pdata < pend; pdata++, pad--) {
 					unsigned char c = *pdata;
 					if (c < 33 || c > 126) {
 						out << '.';
 					} else {
-						if (color) out << terminal::boldYellow;
+						out << terminal::boldYellow;
 						out << c;
-						if (color) out << terminal::reset;
+						out << terminal::reset;
 					}
 				}
 				for (; pad-- > 0; ) {
@@ -172,7 +172,7 @@ namespace gecom {
 
 		public:
 			hexdump_t() { }
-			hexdump_t(const void *data_, size_t size_, bool color_ = false) : m_data(data_), m_size(size_), m_color(color_) { }
+			hexdump_t(const void *data_, size_t size_) : m_data(data_), m_size(size_) { }
 
 			inline friend std::ostream & operator<<(std::ostream &out, const hexdump_t &hex) {
 				char oldfill = out.fill();
@@ -181,15 +181,15 @@ namespace gecom {
 				const unsigned char *pend = pdata + hex.m_size;
 				uint_least16_t index = 0;
 				for (; pdata < pend; pdata += 16, index += 16) {
-					if (hex.m_color) out << terminal::boldBlack;
+					out << terminal::boldBlack;
 					out << "0x" << std::setw(4) << std::hex << index << " : ";
-					if (hex.m_color) out << terminal::reset;
+					out << terminal::reset;
 					ptrdiff_t remaining = pend - pdata;
-					printHex(out, pdata, std::min<ptrdiff_t>(remaining, 8), 8, hex.m_color);
+					printHex(out, pdata, std::min<ptrdiff_t>(remaining, 8), 8);
 					out << ' ';
-					printHex(out, pdata + 8, std::min<ptrdiff_t>(remaining - 8, 8), 8, hex.m_color);
+					printHex(out, pdata + 8, std::min<ptrdiff_t>(remaining - 8, 8), 8);
 					out << ": ";
-					printSafe(out, pdata, std::min<ptrdiff_t>(remaining, 16), 16, hex.m_color);
+					printSafe(out, pdata, std::min<ptrdiff_t>(remaining, 16), 16);
 					out << std::endl;
 				}
 				out.fill(oldfill);
@@ -197,21 +197,12 @@ namespace gecom {
 			}
 		};
 
-		inline hexdump_t hexdump(const void *data, size_t size, bool color = false) {
-			return hexdump_t(data, size, color);
+		inline hexdump_t hexdump(const void *data, size_t size) {
+			return hexdump_t(data, size);
 		}
 
-		inline hexdump_t hexdumpc(const void *data, size_t size) {
-			return hexdump_t(data, size, true);
-		}
-
-		template <typename T>
-		inline hexdump_t hexdumpc(const T &t) {
-			return hexdump(t, true);
-		}
-
-		inline hexdump_t hexdump(const std::string &s, bool color = false) {
-			return hexdump(s.c_str(), s.size(), color);
+		inline hexdump_t hexdump(const std::string &s) {
+			return hexdump(s.c_str(), s.size());
 		}
 	}
 }
