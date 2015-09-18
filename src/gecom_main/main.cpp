@@ -27,10 +27,18 @@ int main() {
 	Log::info() << "cpu endianness: " << cpuEndian();
 	Log::info() << "fpu endianness: " << fpuEndian();
 
-	string s = "helloooo\4ooo wooooooo\6ooooooo\5\5\5orld!";
-	Log::info() << util::hexdump(s);
+	
+	string_serializer ss;
+	ss << 9001 << 9001.999;
 
+	istringstream iss(ss.str());
+	deserializer d(iss.rdbuf());
 
+	int x1;
+	double x2;
+	d >> x1 >> x2;
+
+	Log::info() << x1 << ", " << setprecision(9) << x2;
 
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).contextVersion(4, 1).visible(true);

@@ -180,9 +180,13 @@ namespace gecom {
 		serializer(serializer &&) = default;
 		serializer & operator=(serializer &&) = default;
 
-		void write(const char *pstart, size_t count) {
-			if (fail()) return;
-			if (m_buf->sputn(pstart, count) < count) setstate(badbit);
+		void flush() {
+			m_buf->pubsync();
+		}
+
+		void write(const char *buf, size_t count) {
+			if (!good()) return;
+			if (m_buf->sputn(buf, count) < count) setstate(badbit);
 		}
 
 		template <typename IntT, typename = std::enable_if_t<std::is_integral<IntT>::value>>
@@ -346,7 +350,74 @@ namespace gecom {
 	public:
 		using serializer_base::serializer_base;
 
-		// TODO deserializer
+		deserializer() { }
+
+		deserializer(deserializer &&) = default;
+		deserializer & operator=(deserializer &&) = default;
+
+		traits_type::int_type get() {
+			if (!good()) return traits_type::eof();
+			auto r = m_buf->sbumpc();
+			if (r == traits_type::eof()) setstate(failbit | eofbit);
+			return r;
+		}
+
+		traits_type::int_type peek() {
+			if (!good()) return traits_type::eof();
+			return m_buf->sgetc();
+		}
+
+		void read(char *buf, size_t count) {
+			if (!good()) return;
+			size_t rc = m_buf->sgetn(buf, count);
+			if (rc < count) setstate(failbit | eofbit);
+		}
+
+		template <typename IntT, typename = std::enable_if_t<std::is_integral<IntT>::value>>
+		IntT getInt() {
+			IntT x2 = 0;
+			read(reinterpret_cast<char *>(&x2), sizeof(IntT));
+			return m_endianness == cpuEndian() ? x2 : flipEndian(x2);
+		}
+
+		float getFloat() {
+			static_assert(sizeof(float) == sizeof(uint32_t), "assumed sizeof(float) == sizeof(uint32_t)");
+			uint32_t x2 = 0;
+			read(reinterpret_cast<char *>(&x2), sizeof(uint32_t));
+			x2 = m_endianness == fpuEndian() ? x2 : flipEndian(x2);
+			return reinterpret_cast<float &>(x2);
+		}
+
+		double getDouble() {
+			static_assert(sizeof(double) == sizeof(uint64_t), "assumed sizeof(double) == sizeof(uint64_t)");
+			uint64_t x2 = 0;
+			read(reinterpret_cast<char *>(&x2), sizeof(uint64_t));
+			x2 = m_endianness == fpuEndian() ? x2 : flipEndian(x2);
+			return reinterpret_cast<double &>(x2);
+		}
+
+		template <typename IntT, typename = std::enable_if_t<std::is_integral<IntT>::value>>
+		deserializer & operator>>(IntT &x) {
+			x = getInt<IntT>();
+			return *this;
+		}
+
+		deserializer & operator>>(float &x) {
+			x = getFloat();
+			return *this;
+		}
+
+		deserializer & operator>>(double &x) {
+			x = getDouble();
+			return *this;
+		}
+
+		deserializer & operator>>(std::streambuf *sb) {
+			std::istream i(rdbuf());
+			i >> sb;
+			if (!i) setstate(failbit | eofbit);
+			return *this;
+		}
 	};
 
 	class string_serializer : public serializer {
@@ -354,10 +425,14 @@ namespace gecom {
 		mutable std::stringbuf m_stringbuf;
 
 	public:
-		string_serializer() { }
+		string_serializer() {
+			serializer::rdbuf(&m_stringbuf);
+			clear();
+		}
 
 		string_serializer(const std::string &str) : m_stringbuf(str) {
 			serializer::rdbuf(&m_stringbuf);
+			clear();
 		}
 
 		string_serializer(string_serializer &&other) : m_stringbuf(std::move(other.m_stringbuf)) {
@@ -380,12 +455,12 @@ namespace gecom {
 		}
 	};
 
-	class file_serializer : public serializer {
-		// TODO filer serializer
-	};
-
 	class string_deserializer : public deserializer {
 		// TODO string deserializer
+	};
+
+	class file_serializer : public serializer {
+		// TODO filer serializer
 	};
 
 	class file_deserializer : public deserializer {
