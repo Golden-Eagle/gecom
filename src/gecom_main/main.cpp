@@ -30,15 +30,16 @@ int main() {
 	
 	string_serializer ss;
 	ss << 9001 << 9001.999;
+	ss << "Hello world!";
 
-	istringstream iss(ss.str());
-	deserializer d(iss.rdbuf());
+	string_deserializer sd(ss.str());
 
 	int x1;
 	double x2;
-	d >> x1 >> x2;
+	string x3;
+	sd >> x1 >> x2 >> x3;
 
-	Log::info() << x1 << ", " << setprecision(9) << x2;
+	Log::info() << x1 << ", " << setprecision(9) << x2 << ", " << x3 << '|';
 
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).contextVersion(4, 1).visible(true);
