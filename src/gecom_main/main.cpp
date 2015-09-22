@@ -23,23 +23,36 @@ int main() {
 
 	Log::info().verbosity(0) << "Starting...";
 
+	file_deserializer fd("./blah.bin");
 
-	Log::info() << "cpu endianness: " << cpuEndian();
-	Log::info() << "fpu endianness: " << fpuEndian();
+	if (fd.is_open()) {
+		unordered_map<int32_t, string> m;
+		fd >> m;
 
+		for (const auto &e : m) {
+			Log::info() << e.first << " : " << e.second;
+		}
+	}
+
+	fd.close();
+
+	unordered_map<int32_t, string> m {
+		{ 1, "buddy" },
+		{ 2, "you're" },
+		{ 3, "a" },
+		{ 4, "boy" },
+		{ 5, "make" },
+		{ 6, "a" },
+		{ 7, "big" },
+		{ 8, "noise" },
+		{ 9, "playing" }
+	};
 	
-	string_serializer ss;
-	ss << 9001 << 9001.999;
-	ss << "Hello world!";
 
-	string_deserializer sd(ss.str());
+	file_serializer fs("./blah.bin");
 
-	int x1;
-	double x2;
-	string x3;
-	sd >> x1 >> x2 >> x3;
+	fs << m;
 
-	Log::info() << x1 << ", " << setprecision(9) << x2 << ", " << x3 << '|';
 
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).contextVersion(4, 1).visible(true);

@@ -225,6 +225,8 @@ namespace gecom {
 		void clear(iostate s = goodbit) {
 			m_state = s;
 		}
+
+		virtual ~serializer_base() { }
 	};
 
 	class serializer : public serializer_base {
@@ -715,11 +717,109 @@ namespace gecom {
 	};
 
 	class file_serializer : public serializer {
-		// TODO file serializer
+	private:
+		mutable std::filebuf m_filebuf;
+
+	public:
+		file_serializer() { }
+
+		explicit file_serializer(const char *path_, openmode mode_ = out) {
+			m_filebuf.open(path_, mode_ | out | binary);
+			serializer::rdbuf(&m_filebuf);
+			clear(m_filebuf.is_open() ? goodbit : failbit);
+		}
+
+		explicit file_serializer(const std::string &path_, openmode mode_ = out) {
+			m_filebuf.open(path_, mode_ | out | binary);
+			serializer::rdbuf(&m_filebuf);
+			clear(m_filebuf.is_open() ? goodbit : failbit);
+		}
+
+		file_serializer(file_serializer &&other) : m_filebuf(std::move(other.m_filebuf)) {
+			serializer::rdbuf(&m_filebuf);
+			serializer_base::swap(other);
+		}
+
+		file_serializer & operator=(file_serializer &&other) {
+			m_filebuf = std::move(other.m_filebuf);
+			serializer_base::swap(other);
+			return *this;
+		}
+
+		std::filebuf * rdbuf() const {
+			return &m_filebuf;
+		}
+
+		bool is_open() const {
+			return m_filebuf.is_open();
+		}
+
+		void open(const char *path, openmode mode = out) {
+			m_filebuf.open(path, mode | out | binary);
+			clear(m_filebuf.is_open() ? goodbit : failbit);
+		}
+
+		void open(const std::string &path, openmode mode = out) {
+			m_filebuf.open(path, mode | out | binary);
+			clear(m_filebuf.is_open() ? goodbit : failbit);
+		}
+
+		void close() {
+			m_filebuf.close();
+		}
 	};
 
 	class file_deserializer : public deserializer {
-		// TODO file deserializer
+	private:
+		mutable std::filebuf m_filebuf;
+
+	public:
+		file_deserializer() { }
+
+		explicit file_deserializer(const char *path_, openmode mode_ = in) {
+			m_filebuf.open(path_, mode_ | in | binary);
+			deserializer::rdbuf(&m_filebuf);
+			clear(m_filebuf.is_open() ? goodbit : failbit);
+		}
+
+		explicit file_deserializer(const std::string &path_, openmode mode_ = in) {
+			m_filebuf.open(path_, mode_ | in | binary);
+			deserializer::rdbuf(&m_filebuf);
+			clear(m_filebuf.is_open() ? goodbit : failbit);
+		}
+
+		file_deserializer(file_deserializer &&other) : m_filebuf(std::move(other.m_filebuf)) {
+			deserializer::rdbuf(&m_filebuf);
+			serializer_base::swap(other);
+		}
+
+		file_deserializer & operator=(file_deserializer &&other) {
+			m_filebuf = std::move(other.m_filebuf);
+			serializer_base::swap(other);
+			return *this;
+		}
+
+		std::filebuf * rdbuf() const {
+			return &m_filebuf;
+		}
+
+		bool is_open() const {
+			return m_filebuf.is_open();
+		}
+
+		void open(const char *path, openmode mode = out) {
+			m_filebuf.open(path, mode | in | binary);
+			clear(m_filebuf.is_open() ? goodbit : failbit);
+		}
+
+		void open(const std::string &path, openmode mode = out) {
+			m_filebuf.open(path, mode | in | binary);
+			clear(m_filebuf.is_open() ? goodbit : failbit);
+		}
+
+		void close() {
+			m_filebuf.close();
+		}
 	};
 }
 
