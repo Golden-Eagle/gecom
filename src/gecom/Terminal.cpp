@@ -6,7 +6,7 @@
 
 #ifdef GECOM_PLATFORM_WIN32
 #include <windows.h>
-#ifdef GECOM_CAN_HAVE_MSVCRT_STDIO
+#ifdef GECOM_FOUND_MSVCRT_STDIO
 #define GECOM_STDIO_REDIRECT_WIN32
 #include <io.h>
 #include <fcntl.h>

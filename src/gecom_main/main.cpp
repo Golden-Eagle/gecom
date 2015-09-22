@@ -45,14 +45,14 @@ int main() {
 		{ 6, "a" },
 		{ 7, "big" },
 		{ 8, "noise" },
-		{ 9, "playing" }
+		{ 9, "playing" },
+		{ 10, string(256, '-') }
 	};
 	
 
 	file_serializer fs("./blah.bin");
 
 	fs << m;
-
 
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).contextVersion(4, 1).visible(true);

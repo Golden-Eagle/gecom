@@ -4,6 +4,7 @@
 
 // TODO add complete container template params to operators
 
+#include <cassert>
 #include <cstdint>
 #include <climits>
 #include <type_traits>
@@ -23,14 +24,9 @@
 #include <unordered_set>
 #include <unordered_map>
 
-#ifdef _MSC_VER
-// byteswap intrinsics
-#include <stdlib.h>
-#endif
+#include "Intrinsics.hpp"
 
 namespace gecom {
-
-	using serialized_size_t = uint64_t;
 
 	enum class endian {
 		little, big
@@ -64,55 +60,6 @@ namespace gecom {
 		static const unsigned char c[] { 0x01, 0x00, 0x00, 0x80 };
 		static const endian e = (*reinterpret_cast<const float *>(c) < 0.f) ? endian::little : endian::big;
 		return e;
-	}
-
-	namespace detail {
-
-		template <typename UIntT, typename = std::enable_if_t<std::is_integral<UIntT>::value && std::is_unsigned<UIntT>::value>>
-		inline UIntT byteswap_impl(UIntT x) {
-			static constexpr UIntT mask = (UIntT(1) << CHAR_BIT) - 1;
-			UIntT r = 0;
-			for (int i = 0; i < sizeof(UIntT); ++i) {
-				r <<= CHAR_BIT;
-				r |= x & mask;
-				x >>= CHAR_BIT;
-			}
-			return r;
-		}
-
-#if defined(_MSC_VER)
-		inline unsigned short byteswap_impl(unsigned short x) {
-			return _byteswap_ushort(x);
-		}
-
-		inline unsigned long byteswap_impl(unsigned long x) {
-			return _byteswap_ulong(x);
-		}
-
-		inline unsigned long long byteswap_impl(unsigned long long x) {
-			return _byteswap_uint64(x);
-		}
-#elif defined(__GNUC__)
-		inline uint16_t byteswap_impl(uint16_t x) {
-			return __builtin_bswap16(x);
-		}
-
-		inline uint32_t byteswap_impl(uint32_t x) {
-			return __builtin_bswap32(x);
-		}
-
-		inline uint64_t byteswap_impl(uint64_t x) {
-			return __builtin_bswap64(x);
-		}
-#endif
-
-	}
-
-	template <typename IntT, typename = std::enable_if_t<std::is_integral<IntT>::value>>
-	inline IntT byteswap(IntT x) {
-		using UIntT = std::make_unsigned_t<IntT>;
-		UIntT r = detail::byteswap_impl(reinterpret_cast<UIntT &>(x));
-		return reinterpret_cast<IntT &>(r);
 	}
 
 	class serializer_base {
@@ -248,26 +195,41 @@ namespace gecom {
 		}
 
 		void put(char c) {
-			write(&c, 1);
+			if (!good()) return;
+			if (m_buf->sputc(c) == traits_type::eof()) setstate(badbit);
 		}
 
 		template <typename IntT, typename = std::enable_if_t<std::is_integral<IntT>::value>>
 		void putInt(IntT x) {
-			x = m_endianness == cpuEndian() ? x : byteswap(x);
+			x = m_endianness == cpuEndian() ? x : intrin::byteSwap(x);
 			write(reinterpret_cast<char *>(&x), sizeof(IntT));
+		}
+
+		void putSize(size_t x) {
+			if (x < 248) {
+				// use one byte for small sizes
+				put(x);
+			} else {
+				// count significant bytes
+				int c = (intrin::bitScanReverse(x | 0x1) + CHAR_BIT) / CHAR_BIT;
+				put(247 + c);
+				// write as little-endian with only as many bytes as needed
+				x = cpuEndian() == endian::little ? x : intrin::byteSwap(x);
+				write(reinterpret_cast<char *>(&x), c);
+			}
 		}
 
 		void putFloat(float x) {
 			static_assert(sizeof(float) == sizeof(uint32_t), "assumed sizeof(float) == sizeof(uint32_t)");
 			uint32_t x2 = reinterpret_cast<uint32_t &>(x);
-			x2 = m_endianness == fpuEndian() ? x2 : byteswap(x2);
+			x2 = m_endianness == fpuEndian() ? x2 : intrin::byteSwap(x2);
 			write(reinterpret_cast<char *>(&x2), sizeof(uint32_t));
 		}
 
 		void putDouble(double x) {
 			static_assert(sizeof(double) == sizeof(uint64_t), "assumed sizeof(double) == sizeof(uint64_t)");
 			uint64_t x2 = reinterpret_cast<uint64_t &>(x);
-			x2 = m_endianness == fpuEndian() ? x2 : byteswap(x2);
+			x2 = m_endianness == fpuEndian() ? x2 : intrin::byteSwap(x2);
 			write(reinterpret_cast<char *>(&x2), sizeof(uint64_t));
 		}
 		
@@ -312,7 +274,7 @@ namespace gecom {
 	};
 
 	inline serializer & operator<<(serializer &out, const std::string &s) {
-		out << serialized_size_t(s.size());
+		out.putSize(s.size());
 		out.write(s.c_str(), s.size());
 		return out;
 	}
@@ -363,7 +325,7 @@ namespace gecom {
 
 	template <typename T>
 	inline serializer & operator<<(serializer &out, const std::vector<T> &v) {
-		out << serialized_size_t(v.size());
+		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
 		}
@@ -372,7 +334,7 @@ namespace gecom {
 
 	template <typename T>
 	inline serializer & operator<<(serializer &out, const std::list<T> &v) {
-		out << serialized_size_t(v.size());
+		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
 		}
@@ -381,7 +343,7 @@ namespace gecom {
 
 	template <typename T>
 	inline serializer & operator<<(serializer &out, const std::deque<T> &v) {
-		out << serialized_size_t(v.size());
+		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
 		}
@@ -390,7 +352,7 @@ namespace gecom {
 
 	template <typename T>
 	inline serializer & operator<<(serializer &out, const std::set<T> &v) {
-		out << serialized_size_t(v.size());
+		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
 		}
@@ -399,7 +361,7 @@ namespace gecom {
 
 	template <typename T>
 	inline serializer & operator<<(serializer &out, const std::unordered_set<T> &v) {
-		out << serialized_size_t(v.size());
+		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
 		}
@@ -408,7 +370,7 @@ namespace gecom {
 
 	template <typename KeyT, typename ValueT>
 	inline serializer & operator<<(serializer &out, const std::map<KeyT, ValueT> &v) {
-		out << serialized_size_t(v.size());
+		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
 		}
@@ -417,7 +379,7 @@ namespace gecom {
 
 	template <typename KeyT, typename ValueT>
 	inline serializer & operator<<(serializer &out, const std::unordered_map<KeyT, ValueT> &v) {
-		out << serialized_size_t(v.size());
+		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
 		}
@@ -455,14 +417,29 @@ namespace gecom {
 		IntT getInt() {
 			IntT x2 = 0;
 			read(reinterpret_cast<char *>(&x2), sizeof(IntT));
-			return m_endianness == cpuEndian() ? x2 : byteswap(x2);
+			return m_endianness == cpuEndian() ? x2 : intrin::byteSwap(x2);
+		}
+
+		size_t getSize() {
+			auto c = get();
+			if (c < 248) {
+				// don't allow eof to return bad sizes
+				return c == (c & 0xFF) ? c : 0;
+			} else {
+				// read specified number of bytes, little-endian
+				size_t x = 0;
+				assert((c <= 247 + sizeof(size_t)) && "size_t not big enough");
+				read(reinterpret_cast<char *>(&x), c - 247);
+				x = cpuEndian() == endian::little ? x : intrin::byteSwap(x);
+				return x;
+			}
 		}
 
 		float getFloat() {
 			static_assert(sizeof(float) == sizeof(uint32_t), "assumed sizeof(float) == sizeof(uint32_t)");
 			uint32_t x2 = 0;
 			read(reinterpret_cast<char *>(&x2), sizeof(uint32_t));
-			x2 = m_endianness == fpuEndian() ? x2 : byteswap(x2);
+			x2 = m_endianness == fpuEndian() ? x2 : intrin::byteSwap(x2);
 			return reinterpret_cast<float &>(x2);
 		}
 
@@ -470,7 +447,7 @@ namespace gecom {
 			static_assert(sizeof(double) == sizeof(uint64_t), "assumed sizeof(double) == sizeof(uint64_t)");
 			uint64_t x2 = 0;
 			read(reinterpret_cast<char *>(&x2), sizeof(uint64_t));
-			x2 = m_endianness == fpuEndian() ? x2 : byteswap(x2);
+			x2 = m_endianness == fpuEndian() ? x2 : intrin::byteSwap(x2);
 			return reinterpret_cast<double &>(x2);
 		}
 
@@ -516,8 +493,7 @@ namespace gecom {
 	};
 
 	inline deserializer & operator>>(deserializer &in, std::string &s) {
-		serialized_size_t size = 0;
-		in >> size;
+		size_t size = in.getSize();
 		s.assign(size, '\0');
 		if (size) in.read(&s[0], size);
 		return in;
@@ -569,8 +545,7 @@ namespace gecom {
 
 	template <typename T>
 	inline deserializer & operator>>(deserializer &in, std::vector<T> &v) {
-		serialized_size_t size = 0;
-		in >> size;
+		size_t size = in.getSize();
 		v.assign(size, T());
 		for (auto &x : v) {
 			in >> x;
@@ -580,8 +555,7 @@ namespace gecom {
 
 	template <typename T>
 	inline deserializer & operator>>(deserializer &in, std::list<T> &v) {
-		serialized_size_t size = 0;
-		in >> size;
+		size_t size = in.getSize();
 		v.assign(size, T());
 		for (auto &x : v) {
 			in >> x;
@@ -591,8 +565,7 @@ namespace gecom {
 
 	template <typename T>
 	inline deserializer & operator>>(deserializer &in, std::deque<T> &v) {
-		serialized_size_t size = 0;
-		in >> size;
+		size_t size = in.getSize();
 		v.assign(size, T());
 		for (auto &x : v) {
 			in >> x;
@@ -602,10 +575,9 @@ namespace gecom {
 
 	template <typename T>
 	inline deserializer & operator>>(deserializer &in, std::set<T> &v) {
-		serialized_size_t size = 0;
-		in >> size;
+		size_t size = in.getSize();
 		v.clear();
-		for (serialized_size_t i = 0; i < size; ++i) {
+		for (size_t i = 0; i < size; ++i) {
 			T x;
 			in >> x;
 			v.insert(std::move(x));
@@ -614,10 +586,9 @@ namespace gecom {
 
 	template <typename T>
 	inline deserializer & operator>>(deserializer &in, std::unordered_set<T> &v) {
-		serialized_size_t size = 0;
-		in >> size;
+		size_t size = in.getSize();
 		v.clear();
-		for (serialized_size_t i = 0; i < size; ++i) {
+		for (size_t i = 0; i < size; ++i) {
 			T x;
 			in >> x;
 			v.insert(std::move(x));
@@ -626,10 +597,9 @@ namespace gecom {
 
 	template <typename KeyT, typename ValueT>
 	inline deserializer & operator>>(deserializer &in, std::map<KeyT, ValueT> &v) {
-		serialized_size_t size = 0;
-		in >> size;
+		size_t size = in.getSize();
 		v.clear();
-		for (serialized_size_t i = 0; i < size; ++i) {
+		for (size_t i = 0; i < size; ++i) {
 			std::pair<KeyT, ValueT> x;
 			in >> x;
 			v.insert(std::move(x));
@@ -639,10 +609,9 @@ namespace gecom {
 
 	template <typename KeyT, typename ValueT>
 	inline deserializer & operator>>(deserializer &in, std::unordered_map<KeyT, ValueT> &v) {
-		serialized_size_t size = 0;
-		in >> size;
+		size_t size = in.getSize();
 		v.clear();
-		for (serialized_size_t i = 0; i < size; ++i) {
+		for (size_t i = 0; i < size; ++i) {
 			std::pair<KeyT, ValueT> x;
 			in >> x;
 			v.insert(std::move(x));

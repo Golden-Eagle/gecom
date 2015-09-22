@@ -14,7 +14,7 @@
 #if defined(_MSC_VER) || defined(__MINGW32__) || defined(__MINGW64__)
 // test for toolchains that support functions for manipulation of FILE pointers,
 // like _fileno, _get_osfhandle, _fdopen, _open_osfhandle
-#define GECOM_CAN_HAVE_MSVCRT_STDIO
+#define GECOM_FOUND_MSVCRT_STDIO
 #endif
 
 namespace gecom {

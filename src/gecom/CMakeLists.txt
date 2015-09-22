@@ -24,6 +24,7 @@ set(sources
 	"Platform.hpp"
 	"Platform.cpp"
 	"Serialization.hpp"
+	"Intrinsics.hpp"
 )
 
 add_library(gecom ${sources})
