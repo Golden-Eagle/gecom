@@ -285,11 +285,26 @@ namespace gecom {
 			return *this;
 		}
 
+		serializer & operator<<(endian e) {
+			put(e == endian::little ? 0 : 1);
+			return *this;
+		}
+
 		serializer & operator<<(std::streambuf *sb) {
 			if (!good()) return *this;
 			std::ostream o(rdbuf());
 			o << sb;
 			if (!o) setstate(badbit);
+			return *this;
+		}
+
+		serializer & operator<<(serializer_base & (*func)(serializer_base &)) {
+			func(*this);
+			return *this;
+		}
+
+		serializer & operator<<(serializer & (*func)(serializer &)) {
+			func(*this);
 			return *this;
 		}
 	};
@@ -473,12 +488,27 @@ namespace gecom {
 			return *this;
 		}
 
+		deserializer & operator>>(endian &e) {
+			e = get() ? endian::big : endian::little;
+			return *this;
+		}
+
 		deserializer & operator>>(std::streambuf *sb) {
 			if (!good()) return *this;
 			std::istream i(rdbuf());
 			i >> sb;
 			if (i.eof()) setstate(eofbit);
 			if (i.fail()) setstate(badbit);
+			return *this;
+		}
+
+		deserializer & operator<<(serializer_base & (*func)(serializer_base &)) {
+			func(*this);
+			return *this;
+		}
+
+		deserializer & operator<<(deserializer & (*func)(deserializer &)) {
+			func(*this);
 			return *this;
 		}
 	};
