@@ -23,6 +23,11 @@
 #include <unordered_set>
 #include <unordered_map>
 
+#ifdef _MSC_VER
+// byteswap intrinsics
+#include <stdlib.h>
+#endif
+
 namespace gecom {
 
 	using serialized_size_t = uint64_t;
@@ -61,16 +66,53 @@ namespace gecom {
 		return e;
 	}
 
-	template <typename IntT, typename = std::enable_if_t<std::is_integral<IntT>::value>>
-	inline IntT flipEndian(IntT x) {
-		static constexpr IntT mask = (IntT(1) << CHAR_BIT) - 1;
-		IntT r = 0;
-		for (int i = 0; i < sizeof(IntT); ++i) {
-			r <<= CHAR_BIT;
-			r |= x & mask;
-			x >>= CHAR_BIT;
+	namespace detail {
+
+		template <typename UIntT, typename = std::enable_if_t<std::is_integral<UIntT>::value && std::is_unsigned<UIntT>::value>>
+		inline UIntT byteswap_impl(UIntT x) {
+			static constexpr UIntT mask = (UIntT(1) << CHAR_BIT) - 1;
+			UIntT r = 0;
+			for (int i = 0; i < sizeof(UIntT); ++i) {
+				r <<= CHAR_BIT;
+				r |= x & mask;
+				x >>= CHAR_BIT;
+			}
+			return r;
 		}
-		return r;
+
+#if defined(_MSC_VER)
+		inline unsigned short byteswap_impl(unsigned short x) {
+			return _byteswap_ushort(x);
+		}
+
+		inline unsigned long byteswap_impl(unsigned long x) {
+			return _byteswap_ulong(x);
+		}
+
+		inline unsigned long long byteswap_impl(unsigned long long x) {
+			return _byteswap_uint64(x);
+		}
+#elif defined(__GNUC__)
+		inline uint16_t byteswap_impl(uint16_t x) {
+			return __builtin_bswap16(x);
+		}
+
+		inline uint32_t byteswap_impl(uint32_t x) {
+			return __builtin_bswap32(x);
+		}
+
+		inline uint64_t byteswap_impl(uint64_t x) {
+			return __builtin_bswap64(x);
+		}
+#endif
+
+	}
+
+	template <typename IntT, typename = std::enable_if_t<std::is_integral<IntT>::value>>
+	inline IntT byteswap(IntT x) {
+		using UIntT = std::make_unsigned_t<IntT>;
+		UIntT r = detail::byteswap_impl(reinterpret_cast<UIntT &>(x));
+		return reinterpret_cast<IntT &>(r);
 	}
 
 	class serializer_base {
@@ -209,21 +251,21 @@ namespace gecom {
 
 		template <typename IntT, typename = std::enable_if_t<std::is_integral<IntT>::value>>
 		void putInt(IntT x) {
-			x = m_endianness == cpuEndian() ? x : flipEndian(x);
+			x = m_endianness == cpuEndian() ? x : byteswap(x);
 			write(reinterpret_cast<char *>(&x), sizeof(IntT));
 		}
 
 		void putFloat(float x) {
 			static_assert(sizeof(float) == sizeof(uint32_t), "assumed sizeof(float) == sizeof(uint32_t)");
 			uint32_t x2 = reinterpret_cast<uint32_t &>(x);
-			x2 = m_endianness == fpuEndian() ? x2 : flipEndian(x2);
+			x2 = m_endianness == fpuEndian() ? x2 : byteswap(x2);
 			write(reinterpret_cast<char *>(&x2), sizeof(uint32_t));
 		}
 
 		void putDouble(double x) {
 			static_assert(sizeof(double) == sizeof(uint64_t), "assumed sizeof(double) == sizeof(uint64_t)");
 			uint64_t x2 = reinterpret_cast<uint64_t &>(x);
-			x2 = m_endianness == fpuEndian() ? x2 : flipEndian(x2);
+			x2 = m_endianness == fpuEndian() ? x2 : byteswap(x2);
 			write(reinterpret_cast<char *>(&x2), sizeof(uint64_t));
 		}
 		
@@ -396,14 +438,14 @@ namespace gecom {
 		IntT getInt() {
 			IntT x2 = 0;
 			read(reinterpret_cast<char *>(&x2), sizeof(IntT));
-			return m_endianness == cpuEndian() ? x2 : flipEndian(x2);
+			return m_endianness == cpuEndian() ? x2 : byteswap(x2);
 		}
 
 		float getFloat() {
 			static_assert(sizeof(float) == sizeof(uint32_t), "assumed sizeof(float) == sizeof(uint32_t)");
 			uint32_t x2 = 0;
 			read(reinterpret_cast<char *>(&x2), sizeof(uint32_t));
-			x2 = m_endianness == fpuEndian() ? x2 : flipEndian(x2);
+			x2 = m_endianness == fpuEndian() ? x2 : byteswap(x2);
 			return reinterpret_cast<float &>(x2);
 		}
 
@@ -411,7 +453,7 @@ namespace gecom {
 			static_assert(sizeof(double) == sizeof(uint64_t), "assumed sizeof(double) == sizeof(uint64_t)");
 			uint64_t x2 = 0;
 			read(reinterpret_cast<char *>(&x2), sizeof(uint64_t));
-			x2 = m_endianness == fpuEndian() ? x2 : flipEndian(x2);
+			x2 = m_endianness == fpuEndian() ? x2 : byteswap(x2);
 			return reinterpret_cast<double &>(x2);
 		}
 
