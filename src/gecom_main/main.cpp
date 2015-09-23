@@ -32,6 +32,14 @@ int main() {
 		for (const auto &e : m) {
 			Log::info() << e.first << " : " << e.second;
 		}
+
+		bitset<14> s;
+		fd >> s;
+		bitset<70> ss;
+		fd >> ss;
+
+		Log::info() << s.to_string();
+		Log::info() << ss.to_string();
 	}
 
 	fd.close();
@@ -54,6 +62,11 @@ int main() {
 
 	fs << m;
 
+
+	bitset<14> s(0b11001010101001);
+	fs << s;
+	bitset<70> ss(ULLONG_MAX - 1);
+	fs << ss;
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).contextVersion(4, 1).visible(true);
 

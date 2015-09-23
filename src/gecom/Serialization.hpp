@@ -317,7 +317,13 @@ namespace gecom {
 
 	template <size_t Size>
 	inline serializer & operator<<(serializer &out, const std::bitset<Size> &s) {
-		// TODO serialize bitset
+		// write little-endian sequence of 32-bit words
+		static_assert(sizeof(unsigned long long) >= sizeof(uint32_t), "long long not big enough");
+		static constexpr std::bitset<Size> mask(uint32_t(-1));
+		std::bitset<Size> x = s;
+		for (size_t i = 0; i < Size; i += 32, x >>= 32) {
+			out << uint32_t((x & mask).to_ullong());
+		}
 		return out;
 	}
 
@@ -537,7 +543,14 @@ namespace gecom {
 
 	template <size_t Size>
 	inline deserializer & operator>>(deserializer &in, std::bitset<Size> &s) {
-		// TODO deserialize bitset
+		// read little-endian sequence of 32-bit words
+		static_assert(sizeof(unsigned long long) >= sizeof(uint32_t), "long long not big enough");
+		s.reset();
+		for (size_t i = 0; i < Size; i += 32) {
+			uint32_t a = 0;
+			in >> a;
+			s |= (std::bitset<Size>(a) <<= i);
+		}
 		return in;
 	}
 
