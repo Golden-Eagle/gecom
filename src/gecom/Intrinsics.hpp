@@ -103,7 +103,7 @@
 #define GECOM_USE_X86
 #endif
 #ifdef GECOM_FOUND_X64
-#define GECOM_USE_X64
+//#define GECOM_USE_X64
 #endif
 #ifdef GECOM_FOUND_ARM
 #define GECOM_USE_ARM
@@ -346,18 +346,57 @@ namespace gecom {
 		namespace detail {
 
 			template <typename UIntT, typename = std::enable_if_t<std::is_integral<UIntT>::value && std::is_unsigned<UIntT>::value>>
-			inline int bitScanForwardImpl(UIntT x) {
+			inline unsigned bitScanForwardImpl(UIntT x) {
 				int i = 0;
 				for (; x && !(x & 0x1); x >>= 1, ++i);
 				return i;
 			}
 
-			// TODO bit scan intrinsics
+#if defined(_MSC_VER)
+#ifdef GECOM_USE_X86
+			// native x86 bitscan
+			inline unsigned bitScanReverseImplbitScanForwardImpl(unsigned long x) {
+				unsigned long r;
+				_BitScanForward(&r, x);
+				return r;
+			}
+#ifdef GECOM_USE_X64
+			// native x64 bitscan
+			inline unsigned bitScanForwardImpl(unsigned long long x) {
+				unsigned long r;
+				_BitScanForward64(&r, x);
+				return r;
+			}
+#else
+			// 64-bit bitscan in terms of x86 bitscan
+			inline unsigned bitScanForwardImpl(unsigned long long x) {
+				static constexpr unsigned long ulong_bits = CHAR_BIT * sizeof(unsigned long);
+				unsigned long x0 = x;
+				unsigned long x1 = x >> ulong_bits;
+				unsigned r0 = bitScanForwardImpl(x0);
+				unsigned r1 = bitScanForwardImpl(x1);
+				return x0 ? r0 : r1 + ulong_bits;
+			}
+#endif
+			inline unsigned bitScanForwardImpl(unsigned char x) {
+				return bitScanForwardImpl((unsigned long) x);
+			}
+
+			inline unsigned bitScanForwardImpl(unsigned short x) {
+				return bitScanForwardImpl((unsigned long) x);
+			}
+
+			inline unsigned bitScanForwardImpl(unsigned int x) {
+				return bitScanForwardImpl((unsigned long) x);
+			}
+#endif
+			// TODO gcc bitscan intrinsics
+#endif
 		}
 
 		// find index of lowest set bit; undefined if input is 0
 		template <typename IntT, typename = std::enable_if_t<std::is_integral<IntT>::value>>
-		inline int bitScanForward(IntT x) {
+		inline unsigned bitScanForward(IntT x) {
 			using UIntT = std::make_unsigned_t<IntT>;
 			return detail::bitScanForwardImpl(reinterpret_cast<UIntT &>(x));
 		}
@@ -365,18 +404,57 @@ namespace gecom {
 		namespace detail {
 
 			template <typename UIntT, typename = std::enable_if_t<std::is_integral<UIntT>::value && std::is_unsigned<UIntT>::value>>
-			inline int bitScanReverseImpl(UIntT x) {
-				int i = 0;
+			inline unsigned bitScanReverseImpl(UIntT x) {
+				unsigned i = 0;
 				for (; x >>= 1; ++i);
 				return i;
 			}
 
-			// TODO bit scan intrinsics
+#if defined(_MSC_VER)
+#ifdef GECOM_USE_X86
+			// native x86 bitscan
+			inline unsigned bitScanReverseImpl(unsigned long x) {
+				unsigned long r;
+				_BitScanReverse(&r, x);
+				return r;
+			}
+#ifdef GECOM_USE_X64
+			// native x64 bitscan
+			inline unsigned bitScanReverseImpl(unsigned long long x) {
+				unsigned long r;
+				_BitScanReverse64(&r, x);
+				return r;
+			}
+#else
+			// 64-bit bitscan in terms of x86 bitscan
+			inline unsigned bitScanReverseImpl(unsigned long long x) {
+				static constexpr unsigned long ulong_bits = CHAR_BIT * sizeof(unsigned long);
+				unsigned long x0 = x;
+				unsigned long x1 = x >> ulong_bits;
+				unsigned r0 = bitScanReverseImpl(x0);
+				unsigned r1 = bitScanReverseImpl(x1);
+				return x1 ? r1 + ulong_bits : r0;
+			}
+#endif
+			inline unsigned bitScanReverseImpl(unsigned char x) {
+				return bitScanReverseImpl((unsigned long) x);
+			}
+
+			inline unsigned bitScanReverseImpl(unsigned short x) {
+				return bitScanReverseImpl((unsigned long) x);
+			}
+
+			inline unsigned bitScanReverseImpl(unsigned int x) {
+				return bitScanReverseImpl((unsigned long) x);
+			}
+#endif
+			// TODO gcc bitscan intrinsics
+#endif
 		}
 
 		// find index of highest set bit; undefined if input is 0
 		template <typename IntT, typename = std::enable_if_t<std::is_integral<IntT>::value>>
-		inline int bitScanReverse(IntT x) {
+		inline unsigned bitScanReverse(IntT x) {
 			using UIntT = std::make_unsigned_t<IntT>;
 			return detail::bitScanReverseImpl(reinterpret_cast<UIntT &>(x));
 		}
