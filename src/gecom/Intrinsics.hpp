@@ -103,7 +103,7 @@
 #define GECOM_USE_X86
 #endif
 #ifdef GECOM_FOUND_X64
-//#define GECOM_USE_X64
+#define GECOM_USE_X64
 #endif
 #ifdef GECOM_FOUND_ARM
 #define GECOM_USE_ARM
