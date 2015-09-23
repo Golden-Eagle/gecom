@@ -2,8 +2,6 @@
 #ifndef GECOM_SERIALIZATION_HPP
 #define GECOM_SERIALIZATION_HPP
 
-// TODO add complete container template params to operators
-
 #include <cassert>
 #include <cstdint>
 #include <climits>
@@ -323,8 +321,8 @@ namespace gecom {
 		return out;
 	}
 
-	template <typename T>
-	inline serializer & operator<<(serializer &out, const std::vector<T> &v) {
+	template <typename T, typename AllocT>
+	inline serializer & operator<<(serializer &out, const std::vector<T, AllocT> &v) {
 		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
@@ -332,8 +330,8 @@ namespace gecom {
 		return out;
 	}
 
-	template <typename T>
-	inline serializer & operator<<(serializer &out, const std::list<T> &v) {
+	template <typename T, typename AllocT>
+	inline serializer & operator<<(serializer &out, const std::list<T, AllocT> &v) {
 		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
@@ -341,8 +339,8 @@ namespace gecom {
 		return out;
 	}
 
-	template <typename T>
-	inline serializer & operator<<(serializer &out, const std::deque<T> &v) {
+	template <typename T, typename AllocT>
+	inline serializer & operator<<(serializer &out, const std::deque<T, AllocT> &v) {
 		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
@@ -350,8 +348,8 @@ namespace gecom {
 		return out;
 	}
 
-	template <typename T>
-	inline serializer & operator<<(serializer &out, const std::set<T> &v) {
+	template <typename T, typename PredT, typename AllocT>
+	inline serializer & operator<<(serializer &out, const std::set<T, PredT, AllocT> &v) {
 		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
@@ -359,8 +357,8 @@ namespace gecom {
 		return out;
 	}
 
-	template <typename T>
-	inline serializer & operator<<(serializer &out, const std::unordered_set<T> &v) {
+	template <typename T, typename HashT, typename KeyEqT, typename AllocT>
+	inline serializer & operator<<(serializer &out, const std::unordered_set<T, HashT, KeyEqT, AllocT> &v) {
 		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
@@ -368,8 +366,8 @@ namespace gecom {
 		return out;
 	}
 
-	template <typename KeyT, typename ValueT>
-	inline serializer & operator<<(serializer &out, const std::map<KeyT, ValueT> &v) {
+	template <typename KeyT, typename ValueT, typename PredT, typename AllocT>
+	inline serializer & operator<<(serializer &out, const std::map<KeyT, ValueT, PredT, AllocT> &v) {
 		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
@@ -377,8 +375,8 @@ namespace gecom {
 		return out;
 	}
 
-	template <typename KeyT, typename ValueT>
-	inline serializer & operator<<(serializer &out, const std::unordered_map<KeyT, ValueT> &v) {
+	template <typename KeyT, typename ValueT, typename HashT, typename KeyEqT, typename AllocT>
+	inline serializer & operator<<(serializer &out, const std::unordered_map<KeyT, ValueT, HashT, KeyEqT, AllocT> &v) {
 		out.putSize(v.size());
 		for (const auto &x : v) {
 			out << x;
@@ -543,8 +541,8 @@ namespace gecom {
 		return in;
 	}
 
-	template <typename T>
-	inline deserializer & operator>>(deserializer &in, std::vector<T> &v) {
+	template <typename T, typename AllocT>
+	inline deserializer & operator>>(deserializer &in, std::vector<T, AllocT> &v) {
 		size_t size = in.getSize();
 		v.assign(size, T());
 		for (auto &x : v) {
@@ -553,8 +551,8 @@ namespace gecom {
 		return in;
 	}
 
-	template <typename T>
-	inline deserializer & operator>>(deserializer &in, std::list<T> &v) {
+	template <typename T, typename AllocT>
+	inline deserializer & operator>>(deserializer &in, std::list<T, AllocT> &v) {
 		size_t size = in.getSize();
 		v.assign(size, T());
 		for (auto &x : v) {
@@ -563,8 +561,8 @@ namespace gecom {
 		return in;
 	}
 
-	template <typename T>
-	inline deserializer & operator>>(deserializer &in, std::deque<T> &v) {
+	template <typename T, typename AllocT>
+	inline deserializer & operator>>(deserializer &in, std::deque<T, AllocT> &v) {
 		size_t size = in.getSize();
 		v.assign(size, T());
 		for (auto &x : v) {
@@ -573,8 +571,8 @@ namespace gecom {
 		return in;
 	}
 
-	template <typename T>
-	inline deserializer & operator>>(deserializer &in, std::set<T> &v) {
+	template <typename T, typename PredT, typename AllocT>
+	inline deserializer & operator>>(deserializer &in, std::set<T, PredT, AllocT> &v) {
 		size_t size = in.getSize();
 		v.clear();
 		for (size_t i = 0; i < size; ++i) {
@@ -584,8 +582,8 @@ namespace gecom {
 		}
 	}
 
-	template <typename T>
-	inline deserializer & operator>>(deserializer &in, std::unordered_set<T> &v) {
+	template <typename T, typename HashT, typename KeyEqT, typename AllocT>
+	inline deserializer & operator>>(deserializer &in, std::unordered_set<T, HashT, KeyEqT, AllocT> &v) {
 		size_t size = in.getSize();
 		v.clear();
 		for (size_t i = 0; i < size; ++i) {
@@ -595,8 +593,8 @@ namespace gecom {
 		}
 	}
 
-	template <typename KeyT, typename ValueT>
-	inline deserializer & operator>>(deserializer &in, std::map<KeyT, ValueT> &v) {
+	template <typename KeyT, typename ValueT, typename PredT, typename AllocT>
+	inline deserializer & operator>>(deserializer &in, std::map<KeyT, ValueT, PredT, AllocT> &v) {
 		size_t size = in.getSize();
 		v.clear();
 		for (size_t i = 0; i < size; ++i) {
@@ -607,8 +605,8 @@ namespace gecom {
 		return in;
 	}
 
-	template <typename KeyT, typename ValueT>
-	inline deserializer & operator>>(deserializer &in, std::unordered_map<KeyT, ValueT> &v) {
+	template <typename KeyT, typename ValueT, typename HashT, typename KeyEqT, typename AllocT>
+	inline deserializer & operator>>(deserializer &in, std::unordered_map<KeyT, ValueT, HashT, KeyEqT, AllocT> &v) {
 		size_t size = in.getSize();
 		v.clear();
 		for (size_t i = 0; i < size; ++i) {
