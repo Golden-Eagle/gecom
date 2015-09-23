@@ -288,6 +288,7 @@
 
 #include <cstdint>
 #include <cmath>
+#include <climits>
 #include <type_traits>
 
 namespace gecom {
@@ -370,7 +371,7 @@ namespace gecom {
 #else
 			// 64-bit bitscan in terms of x86 bitscan
 			inline unsigned bitScanForwardImpl(unsigned long long x) {
-				static constexpr unsigned long ulong_bits = CHAR_BIT * sizeof(unsigned long);
+				static constexpr unsigned ulong_bits = CHAR_BIT * sizeof(unsigned long);
 				unsigned long x0 = x;
 				unsigned long x1 = x >> ulong_bits;
 				unsigned r0 = bitScanForwardImpl(x0);
@@ -390,7 +391,26 @@ namespace gecom {
 				return bitScanForwardImpl((unsigned long) x);
 			}
 #endif
-			// TODO gcc bitscan intrinsics
+#elif defined(__GNUC__)
+			inline unsigned bitScanForwardImpl(unsigned int x) {
+				return __builtin_ctz(x);
+			}
+
+			inline unsigned bitScanForwardImpl(unsigned long x) {
+				return __builtin_ctzl(x);
+			}
+
+			inline unsigned bitScanForwardImpl(unsigned long long x) {
+				return __builtin_ctzll(x);
+			}
+
+			inline unsigned bitScanForwardImpl(unsigned char x) {
+				return bitScanForwardImpl((unsigned int) x);
+			}
+
+			inline unsigned bitScanForwardImpl(unsigned short x) {
+				return bitScanForwardImpl((unsigned int) x);
+			}
 #endif
 		}
 
@@ -428,7 +448,7 @@ namespace gecom {
 #else
 			// 64-bit bitscan in terms of x86 bitscan
 			inline unsigned bitScanReverseImpl(unsigned long long x) {
-				static constexpr unsigned long ulong_bits = CHAR_BIT * sizeof(unsigned long);
+				static constexpr unsigned ulong_bits = CHAR_BIT * sizeof(unsigned long);
 				unsigned long x0 = x;
 				unsigned long x1 = x >> ulong_bits;
 				unsigned r0 = bitScanReverseImpl(x0);
@@ -448,7 +468,29 @@ namespace gecom {
 				return bitScanReverseImpl((unsigned long) x);
 			}
 #endif
-			// TODO gcc bitscan intrinsics
+#elif defined(__GNUC__)
+			inline unsigned bitScanReverseImpl(unsigned int x) {
+				static constexpr unsigned uint_bits = CHAR_BIT * sizeof(unsigned int);
+				return uint_bits - 1 - __builtin_clz(x);
+			}
+
+			inline unsigned bitScanReverseImpl(unsigned long x) {
+				static constexpr unsigned ulong_bits = CHAR_BIT * sizeof(unsigned long);
+				return ulong_bits - 1 - __builtin_clzl(x);
+			}
+
+			inline unsigned bitScanReverseImpl(unsigned long long x) {
+				static constexpr unsigned ullong_bits = CHAR_BIT * sizeof(unsigned long long);
+				return ullong_bits - 1 - __builtin_clzll(x);
+			}
+
+			inline unsigned bitScanReverseImpl(unsigned char x) {
+				return bitScanReverseImpl((unsigned int) x);
+			}
+
+			inline unsigned bitScanReverseImpl(unsigned short x) {
+				return bitScanReverseImpl((unsigned int) x);
+			}
 #endif
 		}
 
