@@ -40,6 +40,13 @@ int main() {
 
 		Log::info() << s.to_string();
 		Log::info() << ss.to_string();
+
+		vector<unsigned char> v;
+		fd >> v;
+
+		for (const auto &e : v) {
+			Log::info() << int(e);
+		}
 	}
 
 	fd.close();
@@ -67,6 +74,9 @@ int main() {
 	fs << s;
 	bitset<70> ss(ULLONG_MAX - 1);
 	fs << ss;
+
+	vector<unsigned char> v { 1, 2, 3, 4, 5, 6 };
+	fs << v;
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).contextVersion(4, 1).visible(true);
 

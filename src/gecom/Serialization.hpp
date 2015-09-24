@@ -336,6 +336,33 @@ namespace gecom {
 		return out;
 	}
 
+	template <typename AllocT>
+	inline serializer & operator<<(serializer &out, const std::vector<char, AllocT> &v) {
+		out.putSize(v.size());
+		if (v.size()) {
+			out.write(v.data(), v.size());
+		}
+		return out;
+	}
+
+	template <typename AllocT>
+	inline serializer & operator<<(serializer &out, const std::vector<unsigned char, AllocT> &v) {
+		out.putSize(v.size());
+		if (v.size()) {
+			out.write(reinterpret_cast<const char *>(v.data()), v.size());
+		}
+		return out;
+	}
+
+	template <typename AllocT>
+	inline serializer & operator<<(serializer &out, const std::vector<signed char, AllocT> &v) {
+		out.putSize(v.size());
+		if (v.size()) {
+			out.write(reinterpret_cast<const char *>(v.data()), v.size());
+		}
+		return out;
+	}
+
 	template <typename T, typename AllocT>
 	inline serializer & operator<<(serializer &out, const std::list<T, AllocT> &v) {
 		out.putSize(v.size());
@@ -560,6 +587,36 @@ namespace gecom {
 		v.assign(size, T());
 		for (auto &x : v) {
 			in >> x;
+		}
+		return in;
+	}
+
+	template <typename AllocT>
+	inline deserializer & operator>>(deserializer &in, std::vector<char, AllocT> &v) {
+		size_t size = in.getSize();
+		v.assign(size, 0);
+		if (size) {
+			in.read(v.data(), size);
+		}
+		return in;
+	}
+
+	template <typename AllocT>
+	inline deserializer & operator>>(deserializer &in, std::vector<unsigned char, AllocT> &v) {
+		size_t size = in.getSize();
+		v.assign(size, 0);
+		if (size) {
+			in.read(reinterpret_cast<char *>(v.data()), size);
+		}
+		return in;
+	}
+
+	template <typename AllocT>
+	inline deserializer & operator>>(deserializer &in, std::vector<signed char, AllocT> &v) {
+		size_t size = in.getSize();
+		v.assign(size, 0);
+		if (size) {
+			in.read(reinterpret_cast<char *>(v.data()), size);
 		}
 		return in;
 	}
