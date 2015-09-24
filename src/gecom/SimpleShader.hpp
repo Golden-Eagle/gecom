@@ -83,7 +83,7 @@ namespace skadi {
 	}
 
 	inline GLuint makeShaderProgram(const std::string &profile, const std::vector<GLenum> &stypes, const std::string &source) {
-		gecom::Section sec("SimpleShader");
+		gecom::section_guard sec("SimpleShader");
 		GLuint prog = glCreateProgram();
 
 		auto get_define = [](GLenum stype) {
