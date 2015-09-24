@@ -58,140 +58,162 @@
 
 namespace gecom {
 
-	class shader_error : public std::runtime_error {
-	public:
-		explicit shader_error(std::string what_ = "shader error") : std::runtime_error(what_) { }
-	};
+	namespace shader {
 
-	class shader_compile_error : public shader_error {
-	public:
-		explicit shader_compile_error(const std::string &what_ = "shader compilation failed") : shader_error(what_) { }
-	};
+		class file_not_found : public std::runtime_error {
+		public:
+			explicit file_not_found(const std::string &what_ = "file not found") : std::runtime_error(what_) { }
+		};
 
-	class shader_link_error : public shader_error {
-	public:
-		explicit shader_link_error(const std::string &what_ = "shader program linking failed") : shader_error(what_) { }
-	};
+		class build_error : public std::runtime_error {
+		public:
+			explicit build_error(const std::string &what_ = "shader build failed") : std::runtime_error(what_) { }
+		};
 
-	class ShaderManager;
+		class compile_error : public build_error {
+		public:
+			explicit compile_error(const std::string &what_ = "shader compilation failed") : build_error(what_) { }
+		};
 
-	class shader_spec {
-		friend class ShaderManager;
-	private:
-		std::vector<std::string> m_files;
-		std::vector<std::string> m_texts;
-		std::unordered_map<std::string, std::string> m_defines;
-		mutable ShaderManager *m_shaderman = nullptr;
-		mutable GLuint m_prog = 0;
-		mutable std::chrono::steady_clock::time_point m_timestamp;
+		class link_error : public build_error {
+		public:
+			explicit link_error(const std::string &what_ = "shader program linking failed") : build_error(what_) { }
+		};
 
-	public:
-		shader_spec() { }
+		// shader program specification: source files, source texts, preprocessor defines
+		class progspec {
+		private:
+			std::vector<std::string> m_files;
+			std::vector<std::string> m_texts;
+			std::unordered_map<std::string, std::string> m_defines;
+			mutable GLuint m_prog = 0;
+			mutable std::chrono::steady_clock::time_point m_timestamp;
 
-		shader_spec(const shader_spec &) = default;
-		shader_spec & operator=(const shader_spec &) = default;
+		public:
+			progspec() { }
 
-		shader_spec(shader_spec &&other) :
-			m_files(std::move(other.m_files)),
-			m_texts(std::move(other.m_texts)),
-			m_defines(std::move(other.m_defines)),
-			m_timestamp(other.m_timestamp),
-			m_prog(other.m_prog)
-		{
-			other.m_prog = 0;
-		}
+			progspec(const progspec &) = default;
+			progspec & operator=(const progspec &) = default;
 
-		shader_spec & operator=(shader_spec &&other) {
-			m_files = std::move(other.m_files);
-			m_texts = std::move(other.m_texts);
-			m_defines = std::move(other.m_defines);
-			m_timestamp = other.m_timestamp;
-			m_prog = other.m_prog;
-			other.m_prog = 0;
-		}
+			progspec(progspec &&other) :
+				m_files(std::move(other.m_files)),
+				m_texts(std::move(other.m_texts)),
+				m_defines(std::move(other.m_defines)),
+				m_timestamp(other.m_timestamp),
+				m_prog(other.m_prog)
+			{
+				other.m_prog = 0;
+			}
 
-		shader_spec & file(std::string fname) {
-			m_files.push_back(std::move(fname));
-			return *this;
-		}
+			progspec & operator=(progspec &&other) {
+				m_files = std::move(other.m_files);
+				m_texts = std::move(other.m_texts);
+				m_defines = std::move(other.m_defines);
+				m_timestamp = other.m_timestamp;
+				m_prog = other.m_prog;
+				other.m_prog = 0;
+			}
 
-		shader_spec & text(std::string text) {
-			m_texts.push_back(std::move(text));
-			return *this;
-		}
+			progspec & file(std::string fname) {
+				m_files.push_back(std::move(fname));
+				return *this;
+			}
 
-		shader_spec & define(std::string identifier, std::string tokens) {
-			assert(util::isIdentifier(identifier));
-			m_defines[std::move(identifier)] = std::move(tokens);
-			return *this;
-		}
+			progspec & text(std::string text) {
+				m_texts.push_back(std::move(text));
+				return *this;
+			}
 
-		shader_spec & define(std::string identifier) {
-			define(std::move(identifier), "");
-			return *this;
-		}
+			progspec & define(std::string identifier, std::string tokens) {
+				assert(util::isIdentifier(identifier));
+				m_defines[std::move(identifier)] = std::move(tokens);
+				return *this;
+			}
 
-		template <typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
-		shader_spec & define(std::string identifier, T val) {
-			std::ostringstream oss;
-			oss << val << (std::is_signed<T>::value ? "" : "u");
-			define(std::move(identifier), oss.str());
-			return *this;
-		}
+			progspec & define(std::string identifier) {
+				define(std::move(identifier), "");
+				return *this;
+			}
 
-		shader_spec & define(std::string identifier, float val) {
-			std::ostringstream oss;
-			oss << std::setprecision(9) << val;
-			define(std::move(identifier), oss.str());
-			return *this;
-		}
+			template <typename T, typename = std::enable_if_t<std::is_integral<T>::value>>
+			progspec & define(std::string identifier, T val) {
+				std::ostringstream oss;
+				oss << val << (std::is_signed<T>::value ? "" : "u");
+				define(std::move(identifier), oss.str());
+				return *this;
+			}
 
-		shader_spec & define(std::string identifier, double val) {
-			std::ostringstream oss;
-			oss << std::setprecision(17) << val << "lf";
-			define(std::move(identifier), oss.str());
-			return *this;
-		}
+			progspec & define(std::string identifier, float val) {
+				std::ostringstream oss;
+				oss << std::setprecision(9) << std::showpoint << val;
+				define(std::move(identifier), oss.str());
+				return *this;
+			}
 
-		const auto & files() const {
-			return m_files;
-		}
+			progspec & define(std::string identifier, double val) {
+				std::ostringstream oss;
+				oss << std::setprecision(17) << std::showpoint << val << "lf";
+				define(std::move(identifier), oss.str());
+				return *this;
+			}
 
-		const auto & texts() const {
-			return m_texts;
-		}
+			const auto & files() const {
+				return m_files;
+			}
 
-		const auto & defines() const {
-			return m_defines;
-		}
+			const auto & texts() const {
+				return m_texts;
+			}
 
-		auto & files() {
-			return m_files;
-		}
+			const auto & defines() const {
+				return m_defines;
+			}
 
-		auto & texts() {
-			return m_texts;
-		}
+			auto & files() {
+				return m_files;
+			}
 
-		auto & defines() {
-			return m_defines;
-		}
+			auto & texts() {
+				return m_texts;
+			}
 
-		inline bool operator==(const shader_spec &other) const {
-			return m_files == other.m_files && m_texts == other.m_texts && m_defines == other.m_defines;
-		}
+			auto & defines() {
+				return m_defines;
+			}
 
-		inline bool operator!=(const shader_spec &other) const {
-			return !(*this == other);
-		}
-	};
+			inline bool operator==(const progspec &other) const {
+				return m_files == other.m_files && m_texts == other.m_texts && m_defines == other.m_defines;
+			}
 
-	struct shader_spec_hash {
-		size_t operator()(const shader_spec &spec) noexcept {
-			// TODO shader_spec hash function
-		}
-	};
+			inline bool operator!=(const progspec &other) const {
+				return !(*this == other);
+			}
+		};
 
+		struct progspec_hash {
+			size_t operator()(const progspec &spec) noexcept {
+				// TODO progspec hash function
+			}
+		};
+
+		// replace file names with absolute final paths. throws file_not_found.
+		progspec canonicalize(const progspec &);
+
+		// load a program object (shared with the current context share group), building if necessary.
+		// cached binaries will be loaded if available and newer than all source files.
+		GLuint loadProgram(const progspec &);
+
+		// load a program object as in loadProgram(), then attach it to a pipeline object specific to the current context
+		GLuint loadPipeline(const progspec &);
+
+		// drop all cached binaries, try rebuild specifications for all loaded programs in current context share group,
+		// replace those program objects and return true on success, return false on failure (without changing loaded programs).
+		bool reloadAll();
+
+		// as for reloadAll(), except only outdated binaries are dropped and corresponding programs rebuilt.
+		bool reloadChanged();
+		
+	}
 }
 
 #endif // GECOM_SHADER_HPP
