@@ -60,14 +60,14 @@ namespace gecom {
 
 	namespace shader {
 
-		class file_not_found : public std::runtime_error {
-		public:
-			explicit file_not_found(const std::string &what_ = "file not found") : std::runtime_error(what_) { }
-		};
-
 		class build_error : public std::runtime_error {
 		public:
 			explicit build_error(const std::string &what_ = "shader build failed") : std::runtime_error(what_) { }
+		};
+
+		class file_not_found : public build_error {
+		public:
+			explicit file_not_found(const std::string &what_ = "file not found") : build_error(what_) { }
 		};
 
 		class compile_error : public build_error {
@@ -196,22 +196,43 @@ namespace gecom {
 			}
 		};
 
-		// replace file names with absolute final paths. throws file_not_found.
+		// list the absolute final paths of the known source directories
+		std::vector<std::string> sourceDirectories();
+
+		// replace the known source directories (searched first to last).
+		// throws file_not_found (in that case, the current list is preserved).
+		void sourceDirectories(const std::vector<std::string> &);
+
+		// prepend a source directory (searched before current known directories).
+		// throws file_not_found (in that case, the current list is preserved).
+		void prependSourceDirectory(const std::string &);
+
+		// append a source directory (searched after current known directories)
+		// throws file_not_found (in that case, the current list is preserved).
+		void appendSourceDirectory(const std::string &);
+
+		// clear the list of known source directories
+		void clearSourceDirectories();
+
+		// replace file names with absolute final paths (see loadProgram()). throws file_not_found.
 		progspec canonicalize(const progspec &);
 
-		// load a program object (shared with the current context share group), building if necessary.
-		// cached binaries will be loaded if available and newer than all source files.
+		// load a program object (shared with the current context share group), building if a cached object is not present.
+		// cached binaries will be loaded instead of building if available and newer than all files they depend on (sources + includes).
+		// absolute source file paths will be opened as-is. relative paths will be tested against known source directories
+		// in order until a match is found. throws file_not_found, compile_error, link_error.
 		GLuint loadProgram(const progspec &);
 
-		// load a program object as in loadProgram(), then attach it to a pipeline object specific to the current context
+		// load a program object as in loadProgram(), then attach it to a pipeline object specific to the current context.
+		// throws compile_error, link_error.
 		GLuint loadPipeline(const progspec &);
 
 		// drop all cached binaries, try rebuild specifications for all loaded programs in current context share group,
-		// replace those program objects and return true on success, return false on failure (without changing loaded programs).
-		bool reloadAll();
+		// replace those program objects and return true on success, return false on failure without changing loaded programs.
+		bool reloadAll() noexcept;
 
 		// as for reloadAll(), except only outdated binaries are dropped and corresponding programs rebuilt.
-		bool reloadChanged();
+		bool reloadChanged() noexcept;
 		
 	}
 }
