@@ -1,5 +1,11 @@
 
-// GECOM platform detection macros
+/*
+ * GECOM Platform Helpers
+ *
+ * Platform detection macros, platform-specific functionality and
+ * cross-platform wrappers for common functionality.
+ */
+
 #ifndef GECOM_PLATFORM_HPP
 #define GECOM_PLATFORM_HPP
 
@@ -51,5 +57,25 @@ namespace gecom {
 // TODO improve detection
 #define GECOM_PLATFORM_POSIX
 #endif
+
+namespace gecom {
+
+	class PlatformInit {
+	private:
+		static size_t refcount;
+	public:
+		PlatformInit();
+		~PlatformInit();
+	};
+
+	void * hookImportedProc(void *dllproc, void *newproc);
+
+	void * hookImportedProc(const std::string &modname, const std::string &procname, void *newproc);
+
+}
+
+namespace {
+	gecom::PlatformInit platform_init_obj;
+}
 
 #endif // GECOM_PLATFORM_HPP

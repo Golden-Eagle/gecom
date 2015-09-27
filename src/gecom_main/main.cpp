@@ -10,8 +10,7 @@
 #include <gecom/Log.hpp>
 #include <gecom/Concurrent.hpp>
 
-#include <gecom/Util.hpp>
-#include <gecom/Serialization.hpp>
+#include <gecom/Platform.hpp>
 
 using namespace gecom;
 using namespace std;
@@ -22,6 +21,7 @@ int main() {
 	section_guard sec("main");
 
 	Log::info().verbosity(0) << "Starting...";
+
 
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).contextVersion(4, 1).visible(true);

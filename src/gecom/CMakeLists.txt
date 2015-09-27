@@ -33,6 +33,11 @@ source_group("Sources" FILES ${sources})
 
 # Link usage requirements
 target_link_libraries(gecom PUBLIC glfw glaer)
+if(WIN32)
+	# API hooking via IAT
+	target_link_libraries(gecom PRIVATE imagehlp psapi)
+	target_compile_definitions(gecom PRIVATE "PSAPI_VERSION=1")
+endif()
 
 # Include usage requirements
 # TODO this isn't very nice
