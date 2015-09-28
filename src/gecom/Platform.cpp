@@ -37,12 +37,14 @@ namespace gecom {
 
 namespace {
 	
+	using namespace gecom::platform;
+
 	template <typename ResultT, typename ...ArgTR>
 	auto namedModuleProcAsType(ResultT (__stdcall *proctype)(ArgTR ...), const std::string &modname, const std::string procname) {
 		HMODULE hmod = GetModuleHandleA(modname.c_str());
-		if (hmod == INVALID_HANDLE_VALUE) gecom::throwLastWin32Error("get module handle");
+		if (hmod == INVALID_HANDLE_VALUE) throwLastError("get module handle");
 		FARPROC dllproc = GetProcAddress(hmod, procname.c_str());
-		if (!dllproc) gecom::throwLastWin32Error("get proc address");
+		if (!dllproc) gecom::throwLastError("get proc address");
 		return reinterpret_cast<decltype(proctype)>(dllproc);
 	}
 
@@ -73,7 +75,7 @@ namespace {
 			ImageDirectoryEntryToData(hmod, true, IMAGE_DIRECTORY_ENTRY_IMPORT, &entrysize)
 		);
 		if (!importdesc) {
-			//gecom::throwLastWin32Error("image import descriptors");
+			//gecom::throwLastError("image import descriptors");
 			fprintf(stderr, "failed to get import descriptors\n");
 			return;
 		}
@@ -93,17 +95,17 @@ namespace {
 						// get memory info for region around IAT entry
 						MEMORY_BASIC_INFORMATION mbi;
 						if (!VirtualQuery(pproc, &mbi, sizeof(MEMORY_BASIC_INFORMATION))) {
-							gecom::throwLastWin32Error("get memory info");
+							throwLastError("get memory info");
 						}
 						// un-write-protect
 						if (!VirtualProtect(mbi.BaseAddress, mbi.RegionSize, PAGE_READWRITE, &mbi.Protect)) {
-							gecom::throwLastWin32Error("virtual protect");
+							throwLastError("virtual protect");
 						}
 						// update IAT entry
 						InterlockedExchangePointer(reinterpret_cast<void * volatile *>(pproc), newproc);
 						// restore write-protection
 						if (!VirtualProtect(mbi.BaseAddress, mbi.RegionSize, mbi.Protect, &mbi.Protect)) {
-							gecom::throwLastWin32Error("virtual protect");
+							throwLastError("virtual protect");
 						}
 						// and we're done
 						fprintf(stderr, "hooked %p in module %p\n", dllproc, hmod);
@@ -128,7 +130,7 @@ namespace {
 				&bytesneeded,
 				LIST_MODULES_ALL
 			)) {
-				gecom::throwLastWin32Error("list modules");
+				throwLastError("list modules");
 			}
 			modcount = bytesneeded / sizeof(HMODULE);
 		} while (modcount > modlist.size());
@@ -237,12 +239,12 @@ namespace {
 
 		static void initHooks() {
 			// hook GetProcAddress so it returns our proc addresses for hooked functions
-			gecom::hookImportedProc("kernel32.dll", "GetProcAddress", HookedLibraryLoader::getProcAddress);
+			hookImportedProc("kernel32.dll", "GetProcAddress", HookedLibraryLoader::getProcAddress);
 			// hook LoadLibrary so we can install hooks in newly-loaded modules
-			gecom::hookImportedProc("kernel32.dll", "LoadLibraryA", HookedLibraryLoader::loadLibraryA);
-			gecom::hookImportedProc("kernel32.dll", "LoadLibraryExA", HookedLibraryLoader::loadLibraryExA);
-			gecom::hookImportedProc("kernel32.dll", "LoadLibraryW", HookedLibraryLoader::loadLibraryW);
-			gecom::hookImportedProc("kernel32.dll", "LoadLibraryExW", HookedLibraryLoader::loadLibraryExW);
+			hookImportedProc("kernel32.dll", "LoadLibraryA", HookedLibraryLoader::loadLibraryA);
+			hookImportedProc("kernel32.dll", "LoadLibraryExA", HookedLibraryLoader::loadLibraryExA);
+			hookImportedProc("kernel32.dll", "LoadLibraryW", HookedLibraryLoader::loadLibraryW);
+			hookImportedProc("kernel32.dll", "LoadLibraryExW", HookedLibraryLoader::loadLibraryExW);
 		}
 	};
 
@@ -252,46 +254,51 @@ namespace {
 
 namespace gecom {
 
-	win32_error::win32_error(int err_, const std::string &hint_) : m_err(err_) {
-		char buf[256];
-		FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, m_err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf, sizeof(buf), nullptr);
-		buf[sizeof(buf) - 1] = '\0';
-		if (!hint_.empty()) {
-			m_what += hint_;
-			m_what += ": ";
+	namespace platform {
+
+		win32_error::win32_error(int err_, const std::string &hint_) : m_err(err_) {
+			char buf[256];
+			FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, m_err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf, sizeof(buf), nullptr);
+			buf[sizeof(buf) - 1] = '\0';
+			if (!hint_.empty()) {
+				m_what += hint_;
+				m_what += ": ";
+			}
+			m_what += buf;
 		}
-		m_what += buf;
-	}
 
-	const char * win32_error::what() const noexcept {
-		return &m_what.front();
-	}
+		const char * win32_error::what() const noexcept {
+			return &m_what.front();
+		}
 
-	void throwLastWin32Error(const std::string & hint) {
-		throw win32_error(GetLastError(), hint);
-	}
+		void throwLastError(const std::string & hint) {
+			throw win32_error(GetLastError(), hint);
+		}
 
-	void * hookImportedProc(void *dllproc, void *newproc) {
-		// sanity check
-		if (!dllproc) throw std::invalid_argument("bad target proc address");
-		// add to LoadLibrary hook list
-		HookedLibraryLoader::addHook(dllproc, newproc);
-		// hook loaded modules
-		hookImportedProcInAllModules(dllproc, newproc);
-		return dllproc;
-	}
+		void * hookImportedProc(void *dllproc, void *newproc) {
+			// sanity check
+			if (!dllproc) throw std::invalid_argument("bad target proc address");
+			// add to LoadLibrary hook list
+			HookedLibraryLoader::addHook(dllproc, newproc);
+			// hook loaded modules
+			hookImportedProcInAllModules(dllproc, newproc);
+			return dllproc;
+		}
 
-	void * hookImportedProc(const std::string &modname, const std::string &procname, void *newproc) {
-		void *dllproc = namedModuleProcAsType(FARPROC(), modname, procname);
-		hookImportedProc(dllproc, newproc);
-		return dllproc;
+		void * hookImportedProc(const std::string &modname, const std::string &procname, void *newproc) {
+			void *dllproc = namedModuleProcAsType(FARPROC(), modname, procname);
+			hookImportedProc(dllproc, newproc);
+			return dllproc;
+		}
+
+
 	}
 
 	void onPlatformInit() {
 		try {
 			HookedLibraryLoader::initHooks();
 			
-		} catch (win32_error &e) {
+		} catch (platform::win32_error &e) {
 			fprintf(stderr, "%s\n", e.what());
 			
 		}
@@ -305,6 +312,10 @@ namespace gecom {
 #elif defined(GECOM_PLATFORM_POSIX)
 
 namespace gecom {
+
+	void throwLastError(const std::string &hint) {
+		throw std::runtime_error("not supported on posix yet");
+	}
 
 	void * hookImportedProc(void *dllproc, void *newproc) {
 		throw std::runtime_error("not supported on posix yet");
@@ -320,6 +331,10 @@ namespace gecom {
 
 namespace gecom {
 	
+	void throwLastError(const std::string &hint) {
+		throw std::runtime_error("not supported on this platform");
+	}
+
 	void * hookImportedProc(void *dllproc, void *newproc) {
 		throw std::runtime_error("not supported on this platform");
 	}

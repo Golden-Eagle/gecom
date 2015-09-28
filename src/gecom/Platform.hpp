@@ -25,22 +25,24 @@
 
 namespace gecom {
 
-	class win32_error : public std::exception {
-	private:
-		int m_err;
-		std::string m_what;
+	namespace platform {
 
-	public:
-		win32_error(int err_, const std::string &hint_ = "");
+		class win32_error : public std::exception {
+		private:
+			int m_err;
+			std::string m_what;
 
-		virtual const char * what() const noexcept override;
+		public:
+			win32_error(int err_, const std::string &hint_ = "");
 
-		int code() const noexcept {
-			return m_err;
-		}
-	};
+			virtual const char * what() const noexcept override;
 
-	void throwLastWin32Error(const std::string &hint = "");
+			int code() const noexcept {
+				return m_err;
+			}
+		};
+
+	}
 }
 
 #endif
@@ -68,10 +70,21 @@ namespace gecom {
 		~PlatformInit();
 	};
 
-	void * hookImportedProc(void *dllproc, void *newproc);
+	namespace platform {
 
-	void * hookImportedProc(const std::string &modname, const std::string &procname, void *newproc);
+		void * loadModule(const std::string &modname);
 
+		void freeModule(void *mod);
+
+		void * procAddress(void *mod, const std::string &procname);
+
+		void throwLastError(const std::string &hint = "");
+
+		void * hookImportedProc(void *dllproc, void *newproc);
+
+		void * hookImportedProc(const std::string &modname, const std::string &procname, void *newproc);
+
+	}
 }
 
 namespace {

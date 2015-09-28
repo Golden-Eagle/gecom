@@ -93,8 +93,8 @@ namespace {
 #if defined(GECOM_STDIO_REDIRECT_WIN32)
 #define GECOM_TERMINAL_ANSI
 
-	using gecom::throwLastWin32Error;
-	using gecom::win32_error;
+	using gecom::platform::throwLastError;
+	using gecom::platform::win32_error;
 	
 	std::string makeRandomPipeName() {
 		std::mt19937 rand { std::random_device()() };
@@ -142,7 +142,7 @@ namespace {
 			// event must remain signaled except when there is a pending operation
 			m_overlap.hEvent = CreateEvent(nullptr, true, true, nullptr);
 			if (m_overlap.hEvent == INVALID_HANDLE_VALUE) {
-				throwLastWin32Error("overlapped io event create");
+				throwLastError("overlapped io event create");
 			}
 
 			// make named pipe in overlapped mode
@@ -157,13 +157,13 @@ namespace {
 				nullptr
 			);
 			if (m_hpiper == INVALID_HANDLE_VALUE) {
-				throwLastWin32Error("named pipe create");
+				throwLastError("named pipe create");
 			}
 
 			// begin connect server end of pipe
 			if (ConnectNamedPipe(m_hpiper, &m_overlap)) {
 				// should not happen ever
-				throwLastWin32Error("named pipe connect");
+				throwLastError("named pipe connect");
 			}
 
 			// update state
@@ -176,11 +176,11 @@ namespace {
 				m_state = pipe_state::reading;
 				m_pendingio = false;
 				if (!SetEvent(m_overlap.hEvent)) {
-					throwLastWin32Error("pipe event set");
+					throwLastError("pipe event set");
 				}
 				break;
 			default:
-				throwLastWin32Error("named pipe connect");
+				throwLastError("named pipe connect");
 				break;
 			}
 
@@ -198,7 +198,7 @@ namespace {
 
 			// reopen FILE to point to our named pipe
 			if (!freopen(m_pipename.c_str(), "w", m_fp)) {
-				throwLastWin32Error("freopen named pipe");
+				throwLastError("freopen named pipe");
 			}
 
 			// get original console screen buffer info, determine if we're a console
@@ -271,7 +271,7 @@ namespace {
 				} else {
 					// read broke
 					close();
-					throwLastWin32Error("named pipe read");
+					throwLastError("named pipe read");
 				}
 			}
 			return true;
@@ -343,7 +343,7 @@ namespace {
 			DWORD byteswritten = 0;
 			// TODO this blocked on me at one point
 			if (!WriteFile(m_hreal, pbegin, DWORD(count), &byteswritten, nullptr)) {
-				throwLastWin32Error("write");
+				throwLastError("write");
 			}
 		}
 
@@ -484,7 +484,7 @@ namespace {
 				// get signaled event
 				int i = waitresult - WAIT_OBJECT_0;
 				if (i < 0 || i >= events.size()) {
-					throwLastWin32Error("wait for pipe");
+					throwLastError("wait for pipe");
 				}
 
 				if (i < activeRedirections().size()) {
@@ -503,7 +503,7 @@ namespace {
 				case WAIT_TIMEOUT:
 					break;
 				default:
-					throwLastWin32Error("test event");
+					throwLastError("test event");
 				}
 
 				// cancel any pending io if we need to exit
@@ -520,7 +520,7 @@ namespace {
 				}
 			}
 
-		} catch (gecom::win32_error &e) {
+		} catch (win32_error &e) {
 			// freopen stdout and stderr to console
 			freopen("CONOUT$", "w", stdout);
 			freopen("CONOUT$", "w", stderr);
