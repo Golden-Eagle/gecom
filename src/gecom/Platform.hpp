@@ -80,9 +80,7 @@ namespace gecom {
 
 		void throwLastError(const std::string &hint = "");
 
-		void * hookImportedProc(void *dllproc, void *newproc);
-
-		void * hookImportedProc(const std::string &modname, const std::string &procname, void *newproc);
+		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, void *&oldproc);
 
 	}
 }

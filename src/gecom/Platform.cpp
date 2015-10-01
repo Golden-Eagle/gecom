@@ -59,6 +59,54 @@ namespace {
 		return h;
 	}
 
+	std::vector<HMODULE> grabLoadedModules() {
+		// list loaded modules
+		std::vector<HMODULE> modlist;
+		DWORD bytesneeded = 0;
+		DWORD modcount = 128;
+		do {
+			modlist.resize(modcount, nullptr);
+			if (!EnumProcessModulesEx(
+				GetCurrentProcess(),
+				modlist.data(),
+				sizeof(HMODULE) * modlist.size(),
+				&bytesneeded,
+				LIST_MODULES_ALL
+			)) {
+				throwLastError("list modules");
+			}
+			modcount = bytesneeded / sizeof(HMODULE);
+		} while (modcount > modlist.size());
+		modlist.resize(modcount);
+		// increment reference count to valid modules
+		for (auto it = modlist.begin(); it != modlist.end(); ) {
+			HMODULE h = *it;
+			// try inc refcount (this ensures the handle is for _a_ valid module,
+			// not necessarily the same one as when EnumProcessModules was called)
+			if (h == getModuleHandleByAddress(h, true)) {
+				// module is good
+				++it;
+			} else {
+				// module has been unloaded
+				it = modlist.erase(it);
+			}
+		}
+		// returned handles are real, safe to use FreeLibrary
+		return modlist;
+	}
+
+	void ** exportedProcRVAAddress(HMODULE hmod, const std::string &procname) {
+
+	}
+
+	void ** importedProcAddressAddress(HMODULE hmod, const std::string &impmodname, const std::string &procname) {
+
+	}
+
+	bool verifyImportedProcAddresses(const std::string &procname, const void *proc) {
+
+	}
+
 	void hookImportedProcInModule(HMODULE hmod, void *dllproc, void *newproc) {
 		// synchronize to prevent VirtualProtect race conditions on our part
 		// also, ImageDirectoryEntryToData is supposedly not threadsafe
@@ -116,137 +164,6 @@ namespace {
 		}
 	}
 
-	void hookImportedProcInAllModules(void *dllproc, void *newproc) {
-		// list all loaded modules (this includes the current process)
-		std::vector<HMODULE> modlist;
-		DWORD bytesneeded = 0;
-		DWORD modcount = 128;
-		do {
-			modlist.resize(modcount, nullptr);
-			if (!EnumProcessModulesEx(
-				GetCurrentProcess(),
-				modlist.data(),
-				sizeof(HMODULE) * modlist.size(),
-				&bytesneeded,
-				LIST_MODULES_ALL
-			)) {
-				throwLastError("list modules");
-			}
-			modcount = bytesneeded / sizeof(HMODULE);
-		} while (modcount > modlist.size());
-		modlist.resize(modcount);
-		// hook all loaded modules
-		// if a module is loaded/unloaded after EnumProcessModules,
-		// we obviously can't insert hooks in it
-		for (HMODULE h : modlist) {
-			// try inc refcount (this ensures the handle is for _a_ valid module,
-			// not necessarily the same one as when EnumProcessModules was called)
-			if (h = getModuleHandleByAddress(h, true)) {
-				// hook
-				hookImportedProcInModule(h, dllproc, newproc);
-				// dec refcount
-				FreeLibrary(h);
-			}
-		}
-	}
-
-	class HookedLibraryLoader {
-	private:
-		struct hook {
-			void *dllproc;
-			void *newproc;
-		};
-
-		struct Statics {
-			std::mutex hook_mutex;
-			std::vector<hook> hooks;
-			// original address of GetProcAddress
-			decltype(&GetProcAddress) get_proc_address_org;
-			// original address of GetModuleHandleExA
-			decltype(&GetModuleHandleExA) get_module_handle_exa_org;
-			// original address of LoadLibraryExA
-			decltype(&LoadLibraryExA) load_library_exa_org;
-			// original address of GetModuleHandleExW
-			decltype(&GetModuleHandleExW) get_module_handle_exw_org;
-			// original address of LoadLibraryExW
-			decltype(&LoadLibraryExW) load_library_exw_org;
-		};
-
-		static auto & statics() {
-			static Statics s;
-			return s;
-		}
-
-		static void hookAllModules() {
-			std::unique_lock<std::mutex> lock(statics().hook_mutex);
-			for (const auto &h : statics().hooks) {
-				hookImportedProcInAllModules(h.dllproc, h.newproc);
-			}
-		}
-
-	public:
-		static void addHook(void *dllproc, void *newproc) {
-			std::unique_lock<std::mutex> lock(statics().hook_mutex);
-			hook h { dllproc, newproc };
-			statics().hooks.push_back(std::move(h));
-		}
-
-		static FARPROC __stdcall getProcAddress(HMODULE hModule, LPCSTR lpProcName) {
-			std::unique_lock<std::mutex> lock(statics().hook_mutex);
-			FARPROC r = statics().get_proc_address_org(hModule, lpProcName);
-			for (const auto &h : statics().hooks) {
-				if (r == FARPROC(h.dllproc)) return FARPROC(h.newproc);
-			}
-			return r;
-		}
-
-		static HMODULE __stdcall loadLibraryA(LPCSTR lpLibFileName) {
-			// this is getting spammed by SwapBuffers
-			return loadLibraryExA(lpLibFileName, nullptr, 0);
-		}
-
-		static HMODULE __stdcall loadLibraryExA(LPCSTR lpLibFileName, HANDLE hFile, DWORD dwFlags) {
-			// try get handle to already loaded module (this increments the refcount)
-			HMODULE hmod = nullptr;
-			if (statics().get_module_handle_exa_org(0, lpLibFileName, &hmod)) return hmod;
-			// load module
-			hmod = statics().load_library_exa_org(lpLibFileName, hFile, dwFlags);
-
-			char modfilename[MAX_PATH];
-			GetModuleFileNameA(hmod, modfilename, MAX_PATH);
-			fprintf(stderr, "loaded module %p [%s]...\n", hmod, modfilename);
-
-			// install hooks, ensuring we get all modules loaded by this one too
-			hookAllModules();
-
-			return hmod;
-		}
-
-		static HMODULE __stdcall loadLibraryW(LPCWSTR lpLibFileName) {
-			return loadLibraryExW(lpLibFileName, nullptr, 0);
-		}
-
-		static HMODULE __stdcall loadLibraryExW(LPCWSTR lpLibFileName, HANDLE hFile, DWORD dwFlags) {
-			// try get handle to already loaded module (this increments the refcount)
-			HMODULE hmod = nullptr;
-			if (statics().get_module_handle_exw_org(0, lpLibFileName, &hmod)) return hmod;
-			// load module
-			hmod = statics().load_library_exw_org(lpLibFileName, hFile, dwFlags);
-			// install hooks, ensuring we get all modules loaded by this one too
-			hookAllModules();
-			return hmod;
-		}
-
-		static void initHooks() {
-			// hook GetProcAddress so it returns our proc addresses for hooked functions
-			hookImportedProc("kernel32.dll", "GetProcAddress", HookedLibraryLoader::getProcAddress);
-			// hook LoadLibrary so we can install hooks in newly-loaded modules
-			hookImportedProc("kernel32.dll", "LoadLibraryA", HookedLibraryLoader::loadLibraryA);
-			hookImportedProc("kernel32.dll", "LoadLibraryExA", HookedLibraryLoader::loadLibraryExA);
-			hookImportedProc("kernel32.dll", "LoadLibraryW", HookedLibraryLoader::loadLibraryW);
-			hookImportedProc("kernel32.dll", "LoadLibraryExW", HookedLibraryLoader::loadLibraryExW);
-		}
-	};
 
 
 
@@ -275,28 +192,24 @@ namespace gecom {
 			throw win32_error(GetLastError(), hint);
 		}
 
-		void * hookImportedProc(void *dllproc, void *newproc) {
-			// sanity check
-			if (!dllproc) throw std::invalid_argument("bad target proc address");
-			// add to LoadLibrary hook list
-			HookedLibraryLoader::addHook(dllproc, newproc);
-			// hook loaded modules
-			hookImportedProcInAllModules(dllproc, newproc);
-			return dllproc;
-		}
+		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, void *&oldproc) {
+			// synchronize
+			// load library
+			// get export RVA address
+			// verify export/import address consistency in loaded modules
+			// while (export RVA not ours || verification failed):
+			//   do:
+			//     write export address to oldproc
+			//   until cmpxchg export RVA with (newproc - hmod)
+			//   replace import addresses in loaded modules
 
-		void * hookImportedProc(const std::string &modname, const std::string &procname, void *newproc) {
-			void *dllproc = namedModuleProcAsType(FARPROC(), modname, procname);
-			hookImportedProc(dllproc, newproc);
-			return dllproc;
 		}
-
 
 	}
 
 	void onPlatformInit() {
 		try {
-			HookedLibraryLoader::initHooks();
+
 			
 		} catch (platform::win32_error &e) {
 			fprintf(stderr, "%s\n", e.what());
@@ -317,14 +230,6 @@ namespace gecom {
 		throw std::runtime_error("not supported on posix yet");
 	}
 
-	void * hookImportedProc(void *dllproc, void *newproc) {
-		throw std::runtime_error("not supported on posix yet");
-	}
-
-	void * hookImportedProc(const std::string &modname, const std::string &procname, void *newproc) {
-		throw std::runtime_error("not supported on posix yet");
-	}
-
 }
 
 #else
@@ -332,14 +237,6 @@ namespace gecom {
 namespace gecom {
 	
 	void throwLastError(const std::string &hint) {
-		throw std::runtime_error("not supported on this platform");
-	}
-
-	void * hookImportedProc(void *dllproc, void *newproc) {
-		throw std::runtime_error("not supported on this platform");
-	}
-
-	void * hookImportedProc(const std::string &modname, const std::string &procname, void *newproc) {
 		throw std::runtime_error("not supported on this platform");
 	}
 
