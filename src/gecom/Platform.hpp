@@ -72,12 +72,6 @@ namespace gecom {
 
 	namespace platform {
 
-		void * loadModule(const std::string &modname);
-
-		void freeModule(void *mod);
-
-		void * procAddress(void *mod, const std::string &procname);
-
 		void throwLastError(const std::string &hint = "");
 
 		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, void *&oldproc);

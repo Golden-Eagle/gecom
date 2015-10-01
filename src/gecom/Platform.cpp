@@ -22,12 +22,12 @@ namespace gecom {
 
 #if defined(GECOM_PLATFORM_WIN32)
 
-#include <cstdio>
 
 #include <windows.h>
 #include <ImageHlp.h>
 #include <Psapi.h>
 
+#include <iostream>
 #include <cassert>
 #include <utility>
 #include <vector>
@@ -39,12 +39,22 @@ namespace {
 	
 	using namespace gecom::platform;
 
+	template <typename T, typename U, typename V>
+	T reinterpret_rva_cast(U *base, V rva) {
+		return reinterpret_cast<T *>(reinterpret_cast<unsigned char *>(base) + ptrdiff_t(rva));
+	}
+
+	template <typename T, typename U, typename V>
+	const T reinterpret_rva_cast(const U *base, V rva) {
+		return reinterpret_cast<T *>(reinterpret_cast<const unsigned char *>(base) + ptrdiff_t(rva));
+	}
+
 	template <typename ResultT, typename ...ArgTR>
 	auto namedModuleProcAsType(ResultT (__stdcall *proctype)(ArgTR ...), const std::string &modname, const std::string procname) {
 		HMODULE hmod = GetModuleHandleA(modname.c_str());
-		if (hmod == INVALID_HANDLE_VALUE) throwLastError("get module handle");
+		if (hmod == INVALID_HANDLE_VALUE) throwLastError("GetModuleHandle");
 		FARPROC dllproc = GetProcAddress(hmod, procname.c_str());
-		if (!dllproc) gecom::throwLastError("get proc address");
+		if (!dllproc) gecom::throwLastError("GetProcAddress");
 		return reinterpret_cast<decltype(proctype)>(dllproc);
 	}
 
@@ -73,7 +83,7 @@ namespace {
 				&bytesneeded,
 				LIST_MODULES_ALL
 			)) {
-				throwLastError("list modules");
+				throwLastError("EnumProcessModules");
 			}
 			modcount = bytesneeded / sizeof(HMODULE);
 		} while (modcount > modlist.size());
@@ -96,71 +106,47 @@ namespace {
 	}
 
 	void ** exportedProcRVAAddress(HMODULE hmod, const std::string &procname) {
+		// http://win32assembly.programminghorizon.com/pe-tut7.html
 
 	}
 
-	void ** importedProcAddressAddress(HMODULE hmod, const std::string &impmodname, const std::string &procname) {
-
-	}
-
-	bool verifyImportedProcAddresses(const std::string &procname, const void *proc) {
-
-	}
-
-	void hookImportedProcInModule(HMODULE hmod, void *dllproc, void *newproc) {
-		// synchronize to prevent VirtualProtect race conditions on our part
-		// also, ImageDirectoryEntryToData is supposedly not threadsafe
-		// TODO is it possible to avoid VirtualProtect race conditions with 3rd-party mechanisms?
-		static std::mutex image_mutex;
-		std::unique_lock<std::mutex> lock(image_mutex);
+	void ** importedProcAddressAddress(HMODULE hmod, const std::string &impmodname, const std::string &impprocname) {
 		// http://vxheaven.org/lib/vhf01.html
+		// http://win32assembly.programminghorizon.com/pe-tut6.html
 		// get import descriptors for target module
-		char modfilename[MAX_PATH];
-		GetModuleFileNameA(hmod, modfilename, MAX_PATH);
-		fprintf(stderr, "installing hook in module %p [%s]...\n", hmod, modfilename);
 		ULONG entrysize = 0;
 		auto importdesc = PIMAGE_IMPORT_DESCRIPTOR(
+			// ImageDirectoryEntryToData is supposedly not threadsafe
 			ImageDirectoryEntryToData(hmod, true, IMAGE_DIRECTORY_ENTRY_IMPORT, &entrysize)
 		);
+		// not all modules have an import section
 		if (!importdesc) {
-			//gecom::throwLastError("image import descriptors");
-			fprintf(stderr, "failed to get import descriptors\n");
+			char modfilename[MAX_PATH];
+			GetModuleFileNameA(hmod, modfilename, MAX_PATH);
+			std::cerr << "failed to get import descriptors for " << modfilename << std::endl;
 			return;
 		}
-		// get a handle to the module the target function was exported from
-		HMODULE hmod_origin = getModuleHandleByAddress(dllproc);
 		// find import descriptors for origin module
 		for (; importdesc->Name; ++importdesc) {
-			auto thunk = PIMAGE_THUNK_DATA(PBYTE(hmod) + importdesc->FirstThunk);
-			if (!thunk->u1.Function) continue;
-			HMODULE hmod_imp = getModuleHandleByAddress(PVOID(thunk->u1.Function));
-			if (hmod_imp == hmod_origin) {
-				// import descriptor is for origin module; search for target function
-				for (; thunk->u1.Function; ++thunk) {
-					PROC *pproc = reinterpret_cast<PROC *>(&thunk->u1.Function);
-					if (*pproc == PROC(dllproc)) {
+			const char *modname = reinterpret_rva_cast<const char *>(hmod, importdesc->Name);
+			if (impmodname == modname && importdesc->OriginalFirstThunk) {
+				// array of import pointers
+				auto name_thunk = reinterpret_rva_cast<PIMAGE_THUNK_DATA>(hmod, importdesc->OriginalFirstThunk);
+				// array of function pointers
+				auto proc_thunk = reinterpret_rva_cast<PIMAGE_THUNK_DATA>(hmod, importdesc->FirstThunk);
+				// search for function name
+				for (; name_thunk->u1.AddressOfData; ++name_thunk, ++proc_thunk) {
+					// skip functions imported by ordinal only
+					if (name_thunk->u1.Ordinal & IMAGE_ORDINAL_FLAG) continue;
+					// TODO is this pointer or RVA?
+					auto import = reinterpret_cast<PIMAGE_IMPORT_BY_NAME>(name_thunk->u1.AddressOfData);
+					if (impprocname == static_cast<const char *>(import->Name)) {
 						// gotcha!
-						// get memory info for region around IAT entry
-						MEMORY_BASIC_INFORMATION mbi;
-						if (!VirtualQuery(pproc, &mbi, sizeof(MEMORY_BASIC_INFORMATION))) {
-							throwLastError("get memory info");
-						}
-						// un-write-protect
-						if (!VirtualProtect(mbi.BaseAddress, mbi.RegionSize, PAGE_READWRITE, &mbi.Protect)) {
-							throwLastError("virtual protect");
-						}
-						// update IAT entry
-						InterlockedExchangePointer(reinterpret_cast<void * volatile *>(pproc), newproc);
-						// restore write-protection
-						if (!VirtualProtect(mbi.BaseAddress, mbi.RegionSize, mbi.Protect, &mbi.Protect)) {
-							throwLastError("virtual protect");
-						}
-						// and we're done
-						fprintf(stderr, "hooked %p in module %p\n", dllproc, hmod);
-						break;
+						return reinterpret_cast<void **>(&proc_thunk->u1.Function);
 					}
 				}
 			}
+			
 		}
 	}
 
@@ -175,7 +161,7 @@ namespace gecom {
 
 		win32_error::win32_error(int err_, const std::string &hint_) : m_err(err_) {
 			char buf[256];
-			FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, NULL, m_err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf, sizeof(buf), nullptr);
+			FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, nullptr, m_err, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf, sizeof(buf), nullptr);
 			buf[sizeof(buf) - 1] = '\0';
 			if (!hint_.empty()) {
 				m_what += hint_;
@@ -185,7 +171,7 @@ namespace gecom {
 		}
 
 		const char * win32_error::what() const noexcept {
-			return &m_what.front();
+			return m_what.c_str();
 		}
 
 		void throwLastError(const std::string & hint) {
@@ -212,8 +198,7 @@ namespace gecom {
 
 			
 		} catch (platform::win32_error &e) {
-			fprintf(stderr, "%s\n", e.what());
-			
+			std::cerr << e.what() << std::endl;
 		}
 	}
 
