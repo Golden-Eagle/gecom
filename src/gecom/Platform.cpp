@@ -107,15 +107,53 @@ namespace {
 
 	void ** exportedProcRVAAddress(HMODULE hmod, const std::string &procname) {
 		// http://win32assembly.programminghorizon.com/pe-tut7.html
-
+		// default error state
+		SetLastError(ERROR_PROC_NOT_FOUND);
+		// get export table for target module
+		ULONG entrysize = 0;
+		auto exportdir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(
+			// ImageDirectoryEntryToData is supposedly not threadsafe
+			ImageDirectoryEntryToData(hmod, true, IMAGE_DIRECTORY_ENTRY_EXPORT, &entrysize)
+		);
+		// not all modules have an export section
+		if (!exportdir) {
+			char modfilename[MAX_PATH];
+			GetModuleFileNameA(hmod, modfilename, MAX_PATH);
+			std::cerr << "failed to get export table for " << modfilename << std::endl;
+			return nullptr;
+		}
+		// array of function RVAs
+		auto functions = reinterpret_rva_cast<void **>(hmod, exportdir->AddressOfFunctions);
+		// array of named function names
+		auto names = reinterpret_rva_cast<void **>(hmod, exportdir->AddressOfNames);
+		// array of named function indices
+		auto named_indices = reinterpret_rva_cast<PWORD>(hmod, exportdir->AddressOfNameOrdinals);
+		// search for function name
+		for (DWORD i = 0; i < exportdir->NumberOfNames; ++i) {
+			auto expprocname = reinterpret_rva_cast<const char *>(hmod, names[i]);
+			if (procname == expprocname) {
+				// check function index
+				if (named_indices[i] < exportdir->NumberOfFunctions) {
+					// gotcha!
+					SetLastError(NOERROR);
+					return functions + named_indices[i];
+				} else {
+					return nullptr;
+				}
+			}
+		}
+		// didn't find exported function
+		return nullptr;
 	}
 
-	void ** importedProcAddressAddress(HMODULE hmod, const std::string &impmodname, const std::string &impprocname) {
+	void ** importedProcAddressAddress(HMODULE hmod, const std::string &modname, const std::string &procname) {
 		// http://vxheaven.org/lib/vhf01.html
 		// http://win32assembly.programminghorizon.com/pe-tut6.html
+		// default error state
+		SetLastError(ERROR_PROC_NOT_FOUND);
 		// get import descriptors for target module
 		ULONG entrysize = 0;
-		auto importdesc = PIMAGE_IMPORT_DESCRIPTOR(
+		auto importdesc = reinterpret_cast<PIMAGE_IMPORT_DESCRIPTOR>(
 			// ImageDirectoryEntryToData is supposedly not threadsafe
 			ImageDirectoryEntryToData(hmod, true, IMAGE_DIRECTORY_ENTRY_IMPORT, &entrysize)
 		);
@@ -124,12 +162,12 @@ namespace {
 			char modfilename[MAX_PATH];
 			GetModuleFileNameA(hmod, modfilename, MAX_PATH);
 			std::cerr << "failed to get import descriptors for " << modfilename << std::endl;
-			return;
+			return nullptr;
 		}
 		// find import descriptors for origin module
 		for (; importdesc->Name; ++importdesc) {
-			const char *modname = reinterpret_rva_cast<const char *>(hmod, importdesc->Name);
-			if (impmodname == modname && importdesc->OriginalFirstThunk) {
+			const char *impmodname = reinterpret_rva_cast<const char *>(hmod, importdesc->Name);
+			if (modname == impmodname && importdesc->OriginalFirstThunk) {
 				// array of import pointers
 				auto name_thunk = reinterpret_rva_cast<PIMAGE_THUNK_DATA>(hmod, importdesc->OriginalFirstThunk);
 				// array of function pointers
@@ -140,14 +178,16 @@ namespace {
 					if (name_thunk->u1.Ordinal & IMAGE_ORDINAL_FLAG) continue;
 					// TODO is this pointer or RVA?
 					auto import = reinterpret_cast<PIMAGE_IMPORT_BY_NAME>(name_thunk->u1.AddressOfData);
-					if (impprocname == static_cast<const char *>(import->Name)) {
+					if (procname == static_cast<const char *>(import->Name)) {
 						// gotcha!
+						SetLastError(NOERROR);
 						return reinterpret_cast<void **>(&proc_thunk->u1.Function);
 					}
 				}
 			}
-			
 		}
+		// didn't find imported function
+		return nullptr;
 	}
 
 
@@ -179,9 +219,28 @@ namespace gecom {
 		}
 
 		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, void *&oldproc) {
-			// synchronize
-			// load library
-			// get export RVA address
+			static std::mutex hook_mutex;
+			std::unique_lock<std::mutex> lock(hook_mutex);
+			// load module with function to be hooked
+			HMODULE hmod = LoadLibraryA(modname.c_str());
+			if (hmod == INVALID_HANDLE_VALUE) throwLastError("LoadLibraryA");
+			// exported proc RVA address
+			void * volatile * pprocrva = exportedProcRVAAddress(hmod, procname);
+			if (!pprocrva) throwLastError();
+			// exported proc address
+			void *expproc = nullptr;
+			// import address verification status
+			bool verified = false;
+
+			do {
+
+				expproc = reinterpret_rva_cast<void *>(hmod, *pprocrva);
+
+				// TODO work this out properly
+
+			} while (expproc != newproc && !verified);
+
+
 			// verify export/import address consistency in loaded modules
 			// while (export RVA not ours || verification failed):
 			//   do:
