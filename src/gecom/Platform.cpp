@@ -27,8 +27,9 @@ namespace gecom {
 #include <ImageHlp.h>
 #include <Psapi.h>
 
-#include <iostream>
 #include <cassert>
+#include <cstdint>
+#include <iostream>
 #include <utility>
 #include <vector>
 #include <mutex>
@@ -57,6 +58,36 @@ namespace {
 		if (!dllproc) gecom::throwLastError("GetProcAddress");
 		return reinterpret_cast<decltype(proctype)>(dllproc);
 	}
+
+	class virtualprotect_guard {
+	private:
+		const void *m_base;
+		size_t m_size;
+		MEMORY_BASIC_INFORMATION m_mbi;
+
+	public:
+		virtualprotect_guard() { }
+
+		virtualprotect_guard(const void *base_, size_t size_, DWORD protect_ = PAGE_READWRITE) : m_base(base_), m_size(size_) {
+			VirtualQuery(m_base, &m_mbi, m_size);
+		}
+
+		virtualprotect_guard(const virtualprotect_guard &) = delete;
+		virtualprotect_guard & operator=(const virtualprotect_guard &) = delete;
+
+		virtualprotect_guard(virtualprotect_guard &&) {
+
+		}
+
+		virtualprotect_guard & operator=(virtualprotect_guard &&) {
+
+			return *this;
+		}
+
+		~virtualprotect_guard() {
+
+		}
+	};
 
 	HMODULE getModuleHandleByAddress(void *p, bool increfcount = false) {
 		HMODULE h = nullptr;
@@ -223,22 +254,45 @@ namespace gecom {
 			std::unique_lock<std::mutex> lock(hook_mutex);
 			// load module with function to be hooked
 			HMODULE hmod = LoadLibraryA(modname.c_str());
-			if (hmod == INVALID_HANDLE_VALUE) throwLastError("LoadLibraryA");
+			if (hmod == INVALID_HANDLE_VALUE) throwLastError("LoadLibrary");
 			// exported proc RVA address
-			void * volatile * pprocrva = exportedProcRVAAddress(hmod, procname);
-			if (!pprocrva) throwLastError();
-			// exported proc address
-			void *expproc = nullptr;
-			// import address verification status
+			void * volatile * const pexprva = exportedProcRVAAddress(hmod, procname);
+			if (!pexprva) throwLastError();
+			
+			// export/import address verification status
 			bool verified = false;
 
 			do {
+				// get exported proc address
+				void *oldexprva = *pexprva;
+				void *oldexpproc = reinterpret_rva_cast<void *>(hmod, oldexprva);
 
-				expproc = reinterpret_rva_cast<void *>(hmod, *pprocrva);
+				// if exported proc address not ours, try cmpexchg
+				if (oldexpproc != newproc) {
+					void *newexprva;
+					// if cmpexchg failed, bail and try again
+					if (InterlockedCompareExchangePointer(pexprva, newexprva, oldexprva) != oldexprva) continue;
+				}
 
-				// TODO work this out properly
+				// grab loaded modules
+				auto mods0 = grabLoadedModules();
 
-			} while (expproc != newproc && !verified);
+				// replace imported proc addresses
+				for (const auto &mod : mods0) {
+					// get pointer to imported proc address
+					void * volatile * const pproc = importedProcAddressAddress(mod, modname, procname);
+					if (!pproc) continue;
+
+				}
+
+				// grab loaded modules -> mods1
+				// any differences are newly loaded modules, which should have loaded our replaced export address
+				
+				// verify exported proc address
+
+				// verify imported proc addresses
+
+			} while (!verified);
 
 
 			// verify export/import address consistency in loaded modules
