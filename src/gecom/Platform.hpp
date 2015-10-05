@@ -124,7 +124,13 @@ namespace gecom {
 
 		void throwLastError(const std::string &hint = "");
 
-		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, void **oldproc);
+		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, const void **oldproc);
+
+		template <typename T>
+		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, T **oldproc) {
+			// for convenience
+			hookImportedProc(modname, procname, newproc, reinterpret_cast<const void **>(oldproc));
+		}
 
 	}
 }

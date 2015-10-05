@@ -32,6 +32,7 @@ namespace gecom {
 #include <cassert>
 #include <cstdlib>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <utility>
 #include <vector>
@@ -128,7 +129,7 @@ namespace {
 			if (!EnumProcessModulesEx(
 				GetCurrentProcess(),
 				modlist_temp.data(),
-				sizeof(HMODULE) * modlist_temp.size(),
+				DWORD(sizeof(HMODULE) * modlist_temp.size()),
 				&bytesneeded,
 				LIST_MODULES_ALL
 			)) {
@@ -192,7 +193,7 @@ namespace {
 		return nullptr;
 	}
 
-	void ** importedProcAddressAddress(HMODULE hmod, const std::string &modname, const std::string &procname) {
+	const void ** importedProcAddressAddress(HMODULE hmod, const std::string &modname, const std::string &procname) {
 		// http://vxheaven.org/lib/vhf01.html
 		// http://win32assembly.programminghorizon.com/pe-tut6.html
 		// default error state
@@ -213,8 +214,9 @@ namespace {
 		// find import descriptors for origin module
 		for (; importdesc->Name; ++importdesc) {
 			const char *impmodname = reinterpret_rva_cast<const char *>(hmod, importdesc->Name);
-			if (modname == impmodname && importdesc->OriginalFirstThunk) {
-				// array of import pointers
+			// making sure to use case-insensitive comparison for module names
+			if (stricmp(modname.c_str(), impmodname) == 0 && importdesc->OriginalFirstThunk) {
+				// array of import RVAs
 				auto name_thunk = reinterpret_rva_cast<PIMAGE_THUNK_DATA>(hmod, importdesc->OriginalFirstThunk);
 				// array of function pointers
 				auto proc_thunk = reinterpret_rva_cast<PIMAGE_THUNK_DATA>(hmod, importdesc->FirstThunk);
@@ -222,12 +224,12 @@ namespace {
 				for (; name_thunk->u1.AddressOfData; ++name_thunk, ++proc_thunk) {
 					// skip functions imported by ordinal only
 					if (name_thunk->u1.Ordinal & IMAGE_ORDINAL_FLAG) continue;
-					// TODO is this pointer or RVA?
-					auto import = reinterpret_cast<PIMAGE_IMPORT_BY_NAME>(name_thunk->u1.AddressOfData);
-					if (procname == static_cast<const char *>(import->Name)) {
+					// pointer to import name struct (AddressOfData is an RVA in this context, _not_ a pointer)
+					auto impprocdata = reinterpret_rva_cast<PIMAGE_IMPORT_BY_NAME>(hmod, name_thunk->u1.AddressOfData);
+					if (procname == static_cast<const char *>(impprocdata->Name)) {
 						// gotcha!
 						SetLastError(NOERROR);
-						return reinterpret_cast<void **>(&proc_thunk->u1.Function);
+						return reinterpret_cast<const void **>(&proc_thunk->u1.Function);
 					}
 				}
 			}
@@ -240,6 +242,7 @@ namespace {
 	decltype(&LoadLibraryExA) old_load_library_exa = nullptr;
 
 	HMODULE __stdcall loadLibraryAHook(LPCSTR lpFileName) {
+		// this gets spammed by some WGL things
 		std::cerr << "LoadLibraryA: " << lpFileName << std::endl;
 		return old_load_library_a(lpFileName);
 	}
@@ -292,7 +295,7 @@ namespace gecom {
 			throw win32_error(GetLastError(), hint);
 		}
 
-		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, void **oldproc) {
+		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, const void **oldproc) {
 			// synchronize, this procedure isn't really threadsafe
 			static std::mutex hook_mutex;
 			std::unique_lock<std::mutex> lock(hook_mutex);
@@ -310,7 +313,7 @@ namespace gecom {
 			do {
 				// get exported proc address
 				DWORD oldexprva = *pexprva;
-				void *oldexpproc = reinterpret_rva_cast<void *>(HMODULE(expmod.nativeHandle()), oldexprva);
+				const void *oldexpproc = reinterpret_rva_cast<void *>(HMODULE(expmod.nativeHandle()), oldexprva);
 
 				// if exported proc address not ours, try cmpexchg
 				if (oldexpproc != newproc) {
@@ -325,7 +328,7 @@ namespace gecom {
 					// unprotect and write
 					virtualprotect_guard vpg(reinterpret_cast<volatile void *>(pexprva), sizeof(void *), PAGE_READWRITE);
 					// if cmpexchg failed, bail and try again
-					if (InterlockedCompareExchange(pexprva, newexprva, oldexprva) != oldexprva) continue;
+					if (InterlockedCompareExchange(pexprva, DWORD(newexprva), oldexprva) != oldexprva) continue;
 				}
 
 				// grab loaded modules
@@ -334,11 +337,11 @@ namespace gecom {
 				// replace imported proc addresses
 				for (const auto &mod : mods0) {
 					// get pointer to imported proc address
-					void * volatile * const pproc = importedProcAddressAddress(HMODULE(mod.nativeHandle()), modname, procname);
+					const void * volatile * const pproc = importedProcAddressAddress(HMODULE(mod.nativeHandle()), modname, procname);
 					if (!pproc) continue;
 					// unprotect and write
 					virtualprotect_guard vpg(reinterpret_cast<volatile void *>(pproc), sizeof(void *), PAGE_READWRITE);
-					InterlockedExchangePointer(pproc, const_cast<void *>(newproc));
+					InterlockedExchangePointer(const_cast<void * volatile *>(pproc), const_cast<void *>(newproc));
 				}
 
 				// grab loaded modules again
@@ -356,13 +359,15 @@ namespace gecom {
 				// verify imported proc addresses
 				for (const auto &mod : mods1) {
 					// get pointer to imported proc address
-					void * volatile * const pproc = importedProcAddressAddress(HMODULE(mod.nativeHandle()), modname, procname);
+					const void * volatile * const pproc = importedProcAddressAddress(HMODULE(mod.nativeHandle()), modname, procname);
 					if (!pproc) continue;
 					verified &= *pproc == newproc;
 				}
 
 			} while (!verified);
 
+			// don't unload the module with our modified export table
+			expmod.detach();
 		}
 
 	}
@@ -370,8 +375,8 @@ namespace gecom {
 	void onPlatformInit() {
 		try {
 			// test...
-			hookImportedProc("kernel32.dll", "LoadLibraryA", loadLibraryAHook, reinterpret_cast<void **>(&old_load_library_a));
-			hookImportedProc("kernel32.dll", "LoadLibraryExA", loadLibraryExAHook, reinterpret_cast<void **>(&old_load_library_exa));
+			hookImportedProc("kernel32.dll", "LoadLibraryA", loadLibraryAHook, &old_load_library_a);
+			hookImportedProc("kernel32.dll", "LoadLibraryExA", loadLibraryExAHook, &old_load_library_exa);
 
 		} catch (std::exception &e) {
 			std::cerr << e.what() << std::endl;
