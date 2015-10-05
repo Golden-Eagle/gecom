@@ -320,11 +320,12 @@ namespace gecom {
 					// store old proc address
 					*oldproc = oldexpproc;
 					// calculate new RVA
-					ptrdiff_t newexprva = 
-						reinterpret_cast<const unsigned char *>(newproc) -
+					ptrdiff_t newexprva = reinterpret_cast<const unsigned char *>(newproc) -
 						reinterpret_cast<const unsigned char *>(HMODULE(expmod.nativeHandle()));
 					// RVA is a DWORD, check we're in range
-					assert(ptrdiff_t(DWORD(newexprva)) == newexprva);
+					if (ptrdiff_t(DWORD(newexprva)) != newexprva) {
+						throw std::runtime_error("new proc address not within DWORD range of module");
+					}
 					// unprotect and write
 					virtualprotect_guard vpg(reinterpret_cast<volatile void *>(pexprva), sizeof(void *), PAGE_READWRITE);
 					// if cmpexchg failed, bail and try again
