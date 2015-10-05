@@ -72,9 +72,59 @@ namespace gecom {
 
 	namespace platform {
 
+		class module_handle {
+		private:
+			void *m_hmod = nullptr;
+
+			void destroy() noexcept;
+
+		public:
+			module_handle() { }
+
+			explicit module_handle(void *hmod_) : m_hmod(hmod_) { }
+
+			explicit module_handle(const std::string &modname_);
+
+			module_handle(const module_handle &) = delete;
+			module_handle & operator=(const module_handle &) = delete;
+
+			module_handle(module_handle &&other) noexcept : m_hmod(other.m_hmod) {
+				other.m_hmod = nullptr;
+			}
+
+			module_handle & operator=(module_handle &&other) noexcept {
+				destroy();
+				m_hmod = other.m_hmod;
+				other.m_hmod = nullptr;
+				return *this;
+			}
+
+			void * nativeHandle() const {
+				return m_hmod;
+			}
+
+			void detach() {
+				m_hmod = nullptr;
+			}
+
+			void * procAddress(const std::string &procname) const;
+
+			bool operator==(const module_handle &rhs) const {
+				return m_hmod == rhs.m_hmod;
+			}
+
+			bool operator!=(const module_handle &rhs) const {
+				return !(*this == rhs);
+			}
+
+			~module_handle() {
+				destroy();
+			}
+		};
+
 		void throwLastError(const std::string &hint = "");
 
-		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, void *&oldproc);
+		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, void **oldproc);
 
 	}
 }

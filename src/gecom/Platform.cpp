@@ -1,6 +1,8 @@
 
 #include "Platform.hpp"
 
+#include "Util.hpp"
+
 namespace gecom {
 	size_t PlatformInit::refcount = 0;
 
@@ -28,6 +30,7 @@ namespace gecom {
 #include <Psapi.h>
 
 #include <cassert>
+#include <cstdlib>
 #include <cstdint>
 #include <iostream>
 #include <utility>
@@ -42,50 +45,65 @@ namespace {
 
 	template <typename T, typename U, typename V>
 	T reinterpret_rva_cast(U *base, V rva) {
-		return reinterpret_cast<T *>(reinterpret_cast<unsigned char *>(base) + ptrdiff_t(rva));
+		return reinterpret_cast<T>(reinterpret_cast<unsigned char *>(base) + ptrdiff_t(rva));
 	}
 
 	template <typename T, typename U, typename V>
-	const T reinterpret_rva_cast(const U *base, V rva) {
-		return reinterpret_cast<T *>(reinterpret_cast<const unsigned char *>(base) + ptrdiff_t(rva));
-	}
-
-	template <typename ResultT, typename ...ArgTR>
-	auto namedModuleProcAsType(ResultT (__stdcall *proctype)(ArgTR ...), const std::string &modname, const std::string procname) {
-		HMODULE hmod = GetModuleHandleA(modname.c_str());
-		if (hmod == INVALID_HANDLE_VALUE) throwLastError("GetModuleHandle");
-		FARPROC dllproc = GetProcAddress(hmod, procname.c_str());
-		if (!dllproc) gecom::throwLastError("GetProcAddress");
-		return reinterpret_cast<decltype(proctype)>(dllproc);
+	T reinterpret_rva_cast(const U *base, V rva) {
+		return reinterpret_cast<T>(reinterpret_cast<const unsigned char *>(base) + ptrdiff_t(rva));
 	}
 
 	class virtualprotect_guard {
 	private:
-		const void *m_base;
-		size_t m_size;
-		MEMORY_BASIC_INFORMATION m_mbi;
+		volatile void *m_base = nullptr;
+		size_t m_size = 0;
+		DWORD m_old_protect;
+
+		void destroy() {
+			if (m_base) {
+				// restore original protection
+				if (!VirtualProtect(const_cast<void *>(m_base), m_size, m_old_protect, &m_old_protect)) {
+					// this is kinda bad
+					std::cerr << "VirtualProtect failed to restore original memory protection at " << m_base << " [" << m_size << " bytes], aborting" << std::endl;
+					std::abort();
+				}
+			}
+		}
 
 	public:
 		virtualprotect_guard() { }
 
-		virtualprotect_guard(const void *base_, size_t size_, DWORD protect_ = PAGE_READWRITE) : m_base(base_), m_size(size_) {
-			VirtualQuery(m_base, &m_mbi, m_size);
+		virtualprotect_guard(volatile void *base_, size_t size_, DWORD protect_) : m_base(base_), m_size(size_) {
+			// set new protection, store original protection
+			if (!VirtualProtect(const_cast<void *>(m_base), m_size, protect_, &m_old_protect)) {
+				throwLastError();
+			}
 		}
 
 		virtualprotect_guard(const virtualprotect_guard &) = delete;
 		virtualprotect_guard & operator=(const virtualprotect_guard &) = delete;
 
-		virtualprotect_guard(virtualprotect_guard &&) {
-
+		virtualprotect_guard(virtualprotect_guard &&other) noexcept :
+			m_base(other.m_base),
+			m_size(other.m_size),
+			m_old_protect(other.m_old_protect)
+		{
+			other.m_base = nullptr;
+			other.m_size = 0;
 		}
 
-		virtualprotect_guard & operator=(virtualprotect_guard &&) {
-
+		virtualprotect_guard & operator=(virtualprotect_guard &&other) noexcept {
+			destroy();
+			m_base = other.m_base;
+			m_size = other.m_size;
+			m_old_protect = other.m_old_protect;
+			other.m_base = nullptr;
+			other.m_size = 0;
 			return *this;
 		}
 
 		~virtualprotect_guard() {
-
+			destroy();
 		}
 	};
 
@@ -100,43 +118,40 @@ namespace {
 		return h;
 	}
 
-	std::vector<HMODULE> grabLoadedModules() {
+	std::vector<module_handle> grabLoadedModules() {
 		// list loaded modules
-		std::vector<HMODULE> modlist;
+		std::vector<HMODULE> modlist_temp;
 		DWORD bytesneeded = 0;
 		DWORD modcount = 128;
 		do {
-			modlist.resize(modcount, nullptr);
+			modlist_temp.resize(modcount, nullptr);
 			if (!EnumProcessModulesEx(
 				GetCurrentProcess(),
-				modlist.data(),
-				sizeof(HMODULE) * modlist.size(),
+				modlist_temp.data(),
+				sizeof(HMODULE) * modlist_temp.size(),
 				&bytesneeded,
 				LIST_MODULES_ALL
 			)) {
 				throwLastError("EnumProcessModules");
 			}
 			modcount = bytesneeded / sizeof(HMODULE);
-		} while (modcount > modlist.size());
-		modlist.resize(modcount);
-		// increment reference count to valid modules
-		for (auto it = modlist.begin(); it != modlist.end(); ) {
-			HMODULE h = *it;
+		} while (modcount > modlist_temp.size());
+		modlist_temp.resize(modcount);
+		// increment reference count to valid modules, construct handle objects
+		std::vector<module_handle> modlist;
+		modlist.reserve(modlist_temp.size());
+		for (auto h : modlist_temp) {
 			// try inc refcount (this ensures the handle is for _a_ valid module,
 			// not necessarily the same one as when EnumProcessModules was called)
-			if (h == getModuleHandleByAddress(h, true)) {
-				// module is good
-				++it;
-			} else {
-				// module has been unloaded
-				it = modlist.erase(it);
-			}
+			if (h != getModuleHandleByAddress(h, true)) continue;
+			// module is good
+			modlist.emplace_back(h);
 		}
-		// returned handles are real, safe to use FreeLibrary
+		// returned handles are 'real'
 		return modlist;
 	}
 
-	void ** exportedProcRVAAddress(HMODULE hmod, const std::string &procname) {
+	PDWORD exportedProcRVAAddress(HMODULE hmod, const std::string &procname) {
 		// http://win32assembly.programminghorizon.com/pe-tut7.html
 		// default error state
 		SetLastError(ERROR_PROC_NOT_FOUND);
@@ -153,10 +168,10 @@ namespace {
 			std::cerr << "failed to get export table for " << modfilename << std::endl;
 			return nullptr;
 		}
-		// array of function RVAs
-		auto functions = reinterpret_rva_cast<void **>(hmod, exportdir->AddressOfFunctions);
-		// array of named function names
-		auto names = reinterpret_rva_cast<void **>(hmod, exportdir->AddressOfNames);
+		// array of function RVAs (as DWORDs)
+		auto functions = reinterpret_rva_cast<PDWORD>(hmod, exportdir->AddressOfFunctions);
+		// array of named function name RVAS (as DWORDs)
+		auto names = reinterpret_rva_cast<PDWORD>(hmod, exportdir->AddressOfNames);
 		// array of named function indices
 		auto named_indices = reinterpret_rva_cast<PWORD>(hmod, exportdir->AddressOfNameOrdinals);
 		// search for function name
@@ -221,8 +236,18 @@ namespace {
 		return nullptr;
 	}
 
+	decltype(&LoadLibraryA) old_load_library_a = nullptr;
+	decltype(&LoadLibraryExA) old_load_library_exa = nullptr;
 
+	HMODULE __stdcall loadLibraryAHook(LPCSTR lpFileName) {
+		std::cerr << "LoadLibraryA: " << lpFileName << std::endl;
+		return old_load_library_a(lpFileName);
+	}
 
+	HANDLE __stdcall loadLibraryExAHook(LPCSTR lpFileName, HANDLE hFile, DWORD dwFlags) {
+		std::cerr << "LoadLibraryExA: " << lpFileName << std::endl;
+		return old_load_library_exa(lpFileName, hFile, dwFlags);
+	}
 
 }
 
@@ -245,18 +270,38 @@ namespace gecom {
 			return m_what.c_str();
 		}
 
+		module_handle::module_handle(const std::string &modname_) {
+			HMODULE h = LoadLibraryA(modname_.c_str());
+			if (h == INVALID_HANDLE_VALUE) throwLastError("LoadLibrary");
+			m_hmod = h;
+		}
+
+		void module_handle::destroy() noexcept {
+			if (m_hmod) {
+				FreeLibrary(HMODULE(m_hmod));
+			}
+		}
+
+		void * module_handle::procAddress(const std::string &procname) const {
+			void *proc = GetProcAddress(HMODULE(m_hmod), procname.c_str());
+			if (!proc) throwLastError();
+			return proc;
+		}
+
 		void throwLastError(const std::string & hint) {
 			throw win32_error(GetLastError(), hint);
 		}
 
-		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, void *&oldproc) {
+		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, void **oldproc) {
+			// synchronize, this procedure isn't really threadsafe
 			static std::mutex hook_mutex;
 			std::unique_lock<std::mutex> lock(hook_mutex);
+
 			// load module with function to be hooked
-			HMODULE hmod = LoadLibraryA(modname.c_str());
-			if (hmod == INVALID_HANDLE_VALUE) throwLastError("LoadLibrary");
+			module_handle expmod(modname);
+
 			// exported proc RVA address
-			void * volatile * const pexprva = exportedProcRVAAddress(hmod, procname);
+			DWORD volatile * const pexprva = exportedProcRVAAddress(HMODULE(expmod.nativeHandle()), procname);
 			if (!pexprva) throwLastError();
 			
 			// export/import address verification status
@@ -264,14 +309,23 @@ namespace gecom {
 
 			do {
 				// get exported proc address
-				void *oldexprva = *pexprva;
-				void *oldexpproc = reinterpret_rva_cast<void *>(hmod, oldexprva);
+				DWORD oldexprva = *pexprva;
+				void *oldexpproc = reinterpret_rva_cast<void *>(HMODULE(expmod.nativeHandle()), oldexprva);
 
 				// if exported proc address not ours, try cmpexchg
 				if (oldexpproc != newproc) {
-					void *newexprva;
+					// store old proc address
+					*oldproc = oldexpproc;
+					// calculate new RVA
+					ptrdiff_t newexprva = 
+						reinterpret_cast<const unsigned char *>(newproc) -
+						reinterpret_cast<const unsigned char *>(HMODULE(expmod.nativeHandle()));
+					// RVA is a DWORD, check we're in range
+					assert(ptrdiff_t(DWORD(newexprva)) == newexprva);
+					// unprotect and write
+					virtualprotect_guard vpg(reinterpret_cast<volatile void *>(pexprva), sizeof(void *), PAGE_READWRITE);
 					// if cmpexchg failed, bail and try again
-					if (InterlockedCompareExchangePointer(pexprva, newexprva, oldexprva) != oldexprva) continue;
+					if (InterlockedCompareExchange(pexprva, newexprva, oldexprva) != oldexprva) continue;
 				}
 
 				// grab loaded modules
@@ -280,27 +334,34 @@ namespace gecom {
 				// replace imported proc addresses
 				for (const auto &mod : mods0) {
 					// get pointer to imported proc address
-					void * volatile * const pproc = importedProcAddressAddress(mod, modname, procname);
+					void * volatile * const pproc = importedProcAddressAddress(HMODULE(mod.nativeHandle()), modname, procname);
 					if (!pproc) continue;
-
+					// unprotect and write
+					virtualprotect_guard vpg(reinterpret_cast<volatile void *>(pproc), sizeof(void *), PAGE_READWRITE);
+					InterlockedExchangePointer(pproc, const_cast<void *>(newproc));
 				}
 
-				// grab loaded modules -> mods1
+				// grab loaded modules again
 				// any differences are newly loaded modules, which should have loaded our replaced export address
-				
+				auto mods1 = grabLoadedModules();
+
+				// begin verification
+				verified = true;
+
 				// verify exported proc address
+				DWORD newexprva = *pexprva;
+				void *newexpproc = reinterpret_rva_cast<void *>(HMODULE(expmod.nativeHandle()), newexprva);
+				verified &= newexpproc == newproc;
 
 				// verify imported proc addresses
+				for (const auto &mod : mods1) {
+					// get pointer to imported proc address
+					void * volatile * const pproc = importedProcAddressAddress(HMODULE(mod.nativeHandle()), modname, procname);
+					if (!pproc) continue;
+					verified &= *pproc == newproc;
+				}
 
 			} while (!verified);
-
-
-			// verify export/import address consistency in loaded modules
-			// while (export RVA not ours || verification failed):
-			//   do:
-			//     write export address to oldproc
-			//   until cmpxchg export RVA with (newproc - hmod)
-			//   replace import addresses in loaded modules
 
 		}
 
@@ -308,9 +369,11 @@ namespace gecom {
 
 	void onPlatformInit() {
 		try {
+			// test...
+			hookImportedProc("kernel32.dll", "LoadLibraryA", loadLibraryAHook, reinterpret_cast<void **>(&old_load_library_a));
+			hookImportedProc("kernel32.dll", "LoadLibraryExA", loadLibraryExAHook, reinterpret_cast<void **>(&old_load_library_exa));
 
-			
-		} catch (platform::win32_error &e) {
+		} catch (std::exception &e) {
 			std::cerr << e.what() << std::endl;
 		}
 	}
@@ -324,6 +387,8 @@ namespace gecom {
 
 namespace gecom {
 
+	// TODO posix implementations
+
 	void throwLastError(const std::string &hint) {
 		throw std::runtime_error("not supported on posix yet");
 	}
@@ -334,6 +399,8 @@ namespace gecom {
 
 namespace gecom {
 	
+	// TODO default implementations
+
 	void throwLastError(const std::string &hint) {
 		throw std::runtime_error("not supported on this platform");
 	}
