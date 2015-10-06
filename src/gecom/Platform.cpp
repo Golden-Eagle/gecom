@@ -242,24 +242,36 @@ namespace {
 	decltype(&LoadLibraryExA) old_load_library_exa = nullptr;
 
 	HMODULE __stdcall loadLibraryAHook(LPCSTR lpFileName) {
-		HMODULE hmod = old_load_library_a(lpFileName);
-		
 		// this gets spammed by some WGL things
-		if (strcmp(lpFileName, "OPENGL32") != 0) {
-			std::cerr << "LoadLibraryA: " << lpFileName << std::endl;
-			const void **pproc = importedProcAddressAddress(hmod, "kernel32.dll", "LoadLibraryA");
-			if (!pproc) {
-				std::cerr << "Import not present" << std::endl;
-			} else if (*pproc == loadLibraryAHook) {
-				std::cerr << "Hook OK!" << std::endl;
-			}
+
+		HMODULE hmod;
+
+		if (GetModuleHandleExA(0, lpFileName, &hmod)) {
+			return hmod;
+		}
+
+		hmod = old_load_library_a(lpFileName);
+		
+		std::cerr << "LoadLibraryA: " << lpFileName << std::endl;
+		const void **pproc = importedProcAddressAddress(hmod, "kernel32.dll", "LoadLibraryA");
+		if (!pproc) {
+			std::cerr << "Import not present" << std::endl;
+		} else if (*pproc == loadLibraryAHook) {
+			std::cerr << "Hook OK!" << std::endl;
 		}
 		
 		return hmod;
 	}
 
 	HANDLE __stdcall loadLibraryExAHook(LPCSTR lpFileName, HANDLE hFile, DWORD dwFlags) {
-		HMODULE hmod = old_load_library_exa(lpFileName, hFile, dwFlags);
+
+		HMODULE hmod;
+
+		if (GetModuleHandleExA(0, lpFileName, &hmod)) {
+			return hmod;
+		}
+
+		hmod = old_load_library_exa(lpFileName, hFile, dwFlags);
 		
 		std::cerr << "LoadLibraryExA: " << lpFileName << std::endl;
 		const void **pproc = importedProcAddressAddress(hmod, "kernel32.dll", "LoadLibraryExA");
