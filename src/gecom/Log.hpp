@@ -88,8 +88,8 @@ namespace gecom {
 
 		inline friend std::ostream & operator<<(std::ostream &out, const logmessage &m) {
 			// 2015-07-28T02:20:42.123Z | 0>    Error [ 1/1/main/gameloop/draw/terrain/GL:API ] : Invalid Operation
-			out << m.time << " | " << m.verbosity << "> " << std::setw(11) << m.level << " [";
-			out << m.source << "] : ";
+			out << m.time << " | " << m.verbosity << "> " << std::setw(11) << m.level << " [ ";
+			out << m.source << " ] : ";
 			if (m.body.find_first_of("\r\n") != std::string::npos) {
 				// start multiline messages on a new line
 				out << '\n';
