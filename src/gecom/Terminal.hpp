@@ -9,7 +9,11 @@
  * manipulators in this header do nothing.
  * 
  * Including this header ensures that terminal stdio redirection is correctly
- * initialized before any code that comes after the inclusion.
+ * initialized before any code that comes after the inclusion, provided
+ * the current translation unit has been initialized.
+ *
+ * Terminal is still safe to use even when not initialized, but escape sequences
+ * may not work and functions may return incorrect values.
  *
  * TODO
  * - POSIX stdio redirection
@@ -21,14 +25,26 @@
 #include <cstdio>
 #include <iostream>
 
+// static init dependency
+#include "Section.hpp"
+
+// static init dependency
+#include "Platform.hpp"
+
 namespace gecom {
 
 	class TerminalInit {
 	private:
-		static size_t refcount;
+		static size_t m_refcount;
+		static bool m_isinit;
+
 	public:
 		TerminalInit();
 		~TerminalInit();
+		
+		static bool initialized() {
+			return m_isinit;
+		}
 	};
 
 	namespace terminal {

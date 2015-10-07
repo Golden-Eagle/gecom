@@ -1,3 +1,17 @@
+
+/*
+ * GECOM Log
+ *
+ * Including this header ensures that the log is correctly initialized
+ * before any code that comes after the inclusion, provided the current
+ * translation unit has been initialized.
+ *
+ * Log is still (mostly) safe to use even when not initialized; all output
+ * will be sent to stderr and system debug output. Functions that query
+ * or manipulate the set of log outputs are _NOT_ safe to use before
+ * initialization, and assert this.
+ */
+
 #ifndef GECOM_LOG_HPP
 #define GECOM_LOG_HPP
 
@@ -22,10 +36,16 @@ namespace gecom {
 
 	class LogInit {
 	private:
-		static size_t refcount;
+		static size_t m_refcount;
+		static bool m_isinit;
+
 	public:
 		LogInit();
 		~LogInit();
+
+		static bool initialized() {
+			return m_isinit;
+		}
 	};
 
 	enum class loglevel {

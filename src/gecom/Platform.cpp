@@ -1,6 +1,8 @@
 
-#include "Platform.hpp"
+// we're using the log pre-init
+#include "Log.hpp"
 
+#include "Platform.hpp"
 #include "Util.hpp"
 
 namespace gecom {
@@ -24,7 +26,6 @@ namespace gecom {
 
 #if defined(GECOM_PLATFORM_WIN32)
 
-
 #include <windows.h>
 #include <ImageHlp.h>
 #include <Psapi.h>
@@ -43,6 +44,8 @@ namespace gecom {
 namespace {
 	
 	using namespace gecom::platform;
+	using gecom::Log;
+	using gecom::section_guard;
 
 	template <typename T, typename U, typename V>
 	T reinterpret_rva_cast(U *base, V rva) {
@@ -65,7 +68,7 @@ namespace {
 				// restore original protection
 				if (!VirtualProtect(const_cast<void *>(m_base), m_size, m_old_protect, &m_old_protect)) {
 					// this is kinda bad
-					std::cerr << "VirtualProtect failed to restore original memory protection at " << m_base << " [" << m_size << " bytes], aborting" << std::endl;
+					Log::critical() << "VirtualProtect failed to restore original memory protection at " << m_base << " [" << m_size << " bytes], aborting" << std::endl;
 					std::abort();
 				}
 			}
@@ -166,7 +169,7 @@ namespace {
 		if (!exportdir) {
 			char modfilename[MAX_PATH];
 			GetModuleFileNameA(hmod, modfilename, MAX_PATH);
-			std::cerr << "failed to get export table for " << modfilename << std::endl;
+			//Log::warning() << "failed to get export table for " << modfilename;
 			return nullptr;
 		}
 		// array of function RVAs (as DWORDs)
@@ -208,7 +211,7 @@ namespace {
 		if (!importdesc) {
 			char modfilename[MAX_PATH];
 			GetModuleFileNameA(hmod, modfilename, MAX_PATH);
-			std::cerr << "failed to get import descriptors for " << modfilename << std::endl;
+			//Log::warning() << "failed to get import descriptors for " << modfilename;
 			return nullptr;
 		}
 		// find import descriptors for origin module
@@ -243,6 +246,7 @@ namespace {
 
 	HMODULE __stdcall loadLibraryAHook(LPCSTR lpFileName) {
 		// this gets spammed by some WGL things
+		section_guard sec("LoadLibraryA");
 
 		HMODULE hmod;
 
@@ -252,18 +256,19 @@ namespace {
 
 		hmod = old_load_library_a(lpFileName);
 		
-		std::cerr << "LoadLibraryA: " << lpFileName << std::endl;
+		Log::info() << lpFileName;
 		const void **pproc = importedProcAddressAddress(hmod, "kernel32.dll", "LoadLibraryA");
 		if (!pproc) {
-			std::cerr << "Import not present" << std::endl;
+			Log::info() << "Import not present";
 		} else if (*pproc == loadLibraryAHook) {
-			std::cerr << "Hook OK!" << std::endl;
+			Log::info() << "Hook OK!";
 		}
 		
 		return hmod;
 	}
 
 	HANDLE __stdcall loadLibraryExAHook(LPCSTR lpFileName, HANDLE hFile, DWORD dwFlags) {
+		section_guard sec("LoadLibraryExA");
 
 		HMODULE hmod;
 
@@ -273,12 +278,12 @@ namespace {
 
 		hmod = old_load_library_exa(lpFileName, hFile, dwFlags);
 		
-		std::cerr << "LoadLibraryExA: " << lpFileName << std::endl;
+		Log::info() << lpFileName;
 		const void **pproc = importedProcAddressAddress(hmod, "kernel32.dll", "LoadLibraryExA");
 		if (!pproc) {
-			std::cerr << "Import not present" << std::endl;
+			Log::info() << "Import not present";
 		} else if (*pproc == loadLibraryExAHook) {
-			std::cerr << "Hook OK!" << std::endl;
+			Log::info() << "Hook OK!";
 		}
 
 		return hmod;
@@ -328,6 +333,8 @@ namespace gecom {
 		}
 
 		void hookImportedProc(const std::string &modname, const std::string &procname, const void *newproc, const void **oldproc) {
+			section_guard sec("Platform");
+
 			// synchronize, this procedure isn't really threadsafe
 			static std::mutex hook_mutex;
 			std::unique_lock<std::mutex> lock(hook_mutex);
@@ -401,6 +408,9 @@ namespace gecom {
 
 			// don't unload the module with our modified export table
 			expmod.detach();
+
+			// done!
+			Log::info() << "Installed hook for " << modname << '/' << procname;
 		}
 
 	}

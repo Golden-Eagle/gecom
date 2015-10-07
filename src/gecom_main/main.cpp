@@ -10,8 +10,6 @@
 #include <gecom/Log.hpp>
 #include <gecom/Concurrent.hpp>
 
-#include <gecom/Platform.hpp>
-
 using namespace gecom;
 using namespace std;
 

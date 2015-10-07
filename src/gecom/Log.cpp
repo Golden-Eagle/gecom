@@ -26,6 +26,7 @@
 #error unable to find threadsafe gmtime() or alternative
 #endif
 
+#include <cassert>
 #include <cctype>
 #include <ctime>
 #include <cstdio>
@@ -180,8 +181,6 @@ namespace {
 namespace gecom {
 
 	void Log::write(unsigned verbosity, loglevel level, const std::string &source, const std::string &body) {
-		std::unique_lock<std::mutex> lock(logStatics().output_mutex);
-
 		using namespace std::chrono;
 
 		// truncate to seconds, use difference for second-fraction part of timestamp
@@ -227,39 +226,60 @@ namespace gecom {
 		msg.source = source;
 		msg.body = body;
 
-		// write to debug
-		logStatics().debug_logoutput.write(msg);
+		if (LogInit::initialized()) {
+			std::unique_lock<std::mutex> lock(logStatics().output_mutex);
 
-		// write to stdio
-		logStatics().stderr_logoutput.write(msg);
-		logStatics().stdout_logoutput.write(msg);
+			// write to debug
+			logStatics().debug_logoutput.write(msg);
 
-		// write to all others
-		for (LogOutput *out : logStatics().outputs) {
-			out->write(msg);
+			// write to stdio
+			logStatics().stderr_logoutput.write(msg);
+			logStatics().stdout_logoutput.write(msg);
+
+			// write to all others
+			for (LogOutput *out : logStatics().outputs) {
+				out->write(msg);
+			}
+
+		} else {
+			std::ostringstream out;
+			out << msg << std::endl;
+			std::string outtext = out.str();
+
+			// write to stderr
+			fwrite(outtext.c_str(), 1, outtext.size(), stderr);
+
+#ifdef GECOM_PLATFORM_WIN32
+			// write to win32 debug output
+			OutputDebugStringA(outtext.c_str());
+#endif
 		}
-		
 	}
 
 	void Log::addOutput(LogOutput *out) {
+		assert(LogInit::initialized());
 		std::unique_lock<std::mutex> lock(logStatics().output_mutex);
 		logStatics().outputs.insert(out);
 	}
 
 	void Log::removeOutput(LogOutput *out) {
+		assert(LogInit::initialized());
 		std::unique_lock<std::mutex> lock(logStatics().output_mutex);
 		logStatics().outputs.erase(out);
 	}
 
 	LogOutput * Log::stdOut() {
+		assert(LogInit::initialized());
 		return &logStatics().stdout_logoutput;
 	}
 
 	LogOutput * Log::stdErr() {
+		assert(LogInit::initialized());
 		return &logStatics().stderr_logoutput;
 	}
 
 	LogOutput * Log::debugOut() {
+		assert(LogInit::initialized());
 		return &logStatics().debug_logoutput;
 	}
 
@@ -288,18 +308,24 @@ namespace gecom {
 		return std::move(info(source).critical());
 	}
 
-	size_t LogInit::refcount = 0;
+	size_t LogInit::m_refcount = 0;
+	bool LogInit::m_isinit = false;
 
 	LogInit::LogInit() {
-		if (refcount++ == 0) {
+		if (m_refcount++ == 0) {
+			section_guard sec("Log");
+			Log::info() << "Log initializing...";
 			// ensure log statics are initialized
 			logStatics();
+			m_isinit = true;
 			Log::info() << "Log initialized";
 		}
 	}
 
 	LogInit::~LogInit() {
-		if (--refcount == 0) {
+		if (--m_refcount == 0) {
+			section_guard sec("Log");
+			m_isinit = false;
 			// log statics about to be destroyed
 			Log::info() << "Log deinitialized";
 		}

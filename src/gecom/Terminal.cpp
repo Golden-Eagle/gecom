@@ -2,6 +2,23 @@
 // apparently freopen() is unsafe. we use it safely.
 #define _CRT_SECURE_NO_WARNINGS
 
+#include <cassert>
+#include <cstdio>
+#include <cstring>
+#include <cctype>
+#include <climits>
+#include <vector>
+#include <thread>
+#include <atomic>
+#include <random>
+#include <memory>
+#include <utility>
+
+// we're using the log pre-init
+#include "Log.hpp"
+
+#include "Terminal.hpp"
+
 #include "Platform.hpp"
 
 #ifdef GECOM_PLATFORM_WIN32
@@ -21,21 +38,10 @@
 #define GECOM_HAVE_IOCTL
 #endif
 
-#include <cassert>
-#include <cstdio>
-#include <cstring>
-#include <cctype>
-#include <climits>
-#include <vector>
-#include <thread>
-#include <atomic>
-#include <random>
-#include <memory>
-#include <utility>
-
-#include "Terminal.hpp"
-
 namespace {
+
+	using gecom::section_guard;
+	using gecom::Log;
 
 	template <typename TextFunT, typename EscapeFunT>
 	char * processEscapeSequences(char *pbegin, size_t count, const TextFunT &textfun, const EscapeFunT &escapefun) {
@@ -107,6 +113,16 @@ namespace {
 		return name;
 	}
 
+	int terminalWidthByHandle(HANDLE h) noexcept {
+		CONSOLE_SCREEN_BUFFER_INFO csbi;
+		if (GetConsoleScreenBufferInfo(h, &csbi)) {
+			return csbi.srWindow.Right - csbi.srWindow.Left + 1;
+		} else {
+			// not a console
+			return INT_MAX;
+		}
+	}
+
 	class Redirection {
 	private:
 		static constexpr size_t internalbufsize = 256;
@@ -142,7 +158,7 @@ namespace {
 			// event must remain signaled except when there is a pending operation
 			m_overlap.hEvent = CreateEvent(nullptr, true, true, nullptr);
 			if (m_overlap.hEvent == INVALID_HANDLE_VALUE) {
-				throwLastError("overlapped io event create");
+				throwLastError("CreateEvent [overlapped]");
 			}
 
 			// make named pipe in overlapped mode
@@ -157,13 +173,13 @@ namespace {
 				nullptr
 			);
 			if (m_hpiper == INVALID_HANDLE_VALUE) {
-				throwLastError("named pipe create");
+				throwLastError("CreateNamedPipe");
 			}
 
 			// begin connect server end of pipe
 			if (ConnectNamedPipe(m_hpiper, &m_overlap)) {
 				// should not happen ever
-				throwLastError("named pipe connect");
+				throwLastError("ConnectNamedPipe");
 			}
 
 			// update state
@@ -176,11 +192,11 @@ namespace {
 				m_state = pipe_state::reading;
 				m_pendingio = false;
 				if (!SetEvent(m_overlap.hEvent)) {
-					throwLastError("pipe event set");
+					throwLastError("SetEvent [overlapped]");
 				}
 				break;
 			default:
-				throwLastError("named pipe connect");
+				throwLastError("ConnectNamedPipe");
 				break;
 			}
 
@@ -220,11 +236,12 @@ namespace {
 				m_pendingio = false;
 				DWORD bytesread = 0;
 				bool success = GetOverlappedResult(m_hpiper, &m_overlap, &bytesread, false);
-				DWORD err = GetLastError();
-				if (err == ERROR_OPERATION_ABORTED) {
+				if (GetLastError() == ERROR_OPERATION_ABORTED) {
 					// if cancelled, don't start another operation
 					// ensure we don't continue unless asked
-					ResetEvent(m_overlap.hEvent);
+					if (!ResetEvent(m_overlap.hEvent)) {
+						throwLastError("ResetEvent [overlapped]");
+					}
 					return false;
 				}
 				switch (m_state) {
@@ -232,7 +249,7 @@ namespace {
 					// pending connect
 					if (!success) {
 						close();
-						throw win32_error(err, "overlapped named pipe connect");
+						throwLastError("GetOverlappedResult [pipe connect]");
 					}
 					m_state = pipe_state::reading;
 					break;
@@ -240,7 +257,7 @@ namespace {
 					// pending read
 					if (!success) {
 						close();
-						throw win32_error(err, "overlapped named pipe read");
+						throwLastError("GetOverlappedResult [pipe read]");
 					}
 					m_pwrite += bytesread;
 					flush();
@@ -264,14 +281,16 @@ namespace {
 					m_pwrite += bytesread;
 					flush();
 					// ensure we can continue
-					SetEvent(m_overlap.hEvent);
+					if (!SetEvent(m_overlap.hEvent)) {
+						throwLastError("SetEvent [overlapped]");
+					}
 				} else if (GetLastError() == ERROR_IO_PENDING) {
 					// read is pending
 					m_pendingio = true;
 				} else {
 					// read broke
 					close();
-					throwLastError("named pipe read");
+					throwLastError("ReadFile [pipe]");
 				}
 			}
 			return true;
@@ -343,7 +362,7 @@ namespace {
 			DWORD byteswritten = 0;
 			// TODO this blocked on me at one point
 			if (!WriteFile(m_hreal, pbegin, DWORD(count), &byteswritten, nullptr)) {
-				throwLastError("write");
+				throwLastError("WriteFile");
 			}
 		}
 
@@ -425,13 +444,7 @@ namespace {
 		}
 
 		int terminalWidth() const noexcept {
-			CONSOLE_SCREEN_BUFFER_INFO csbi;
-			if (GetConsoleScreenBufferInfo(m_hreal, &csbi)) {
-				return csbi.srWindow.Right - csbi.srWindow.Left + 1;
-			} else {
-				// not a console
-				return INT_MAX;
-			}
+			return terminalWidthByHandle(m_hreal);
 		}
 
 		~Redirection() {
@@ -458,8 +471,10 @@ namespace {
 	}
 
 	void doStdIORedirection() {
+		section_guard sec("Terminal");
 		try {
 			// get event handles for redirections
+			// note that event index must match redirection index
 			std::vector<HANDLE> events;
 			for (const auto &rd : activeRedirections()) {
 				events.push_back(rd->eventHandle());
@@ -468,9 +483,7 @@ namespace {
 			// also wait on should-exit event as lowest priority
 			events.push_back(redirectExitEvent());
 
-			// note that event index must match redirection index
-
-			//fprintf(stderr, "redirected!\n");
+			Log::info() << "Redirection initialized";
 
 			// set to true when loop can exit cleanly
 			bool done = false;
@@ -484,7 +497,7 @@ namespace {
 				// get signaled event
 				int i = waitresult - WAIT_OBJECT_0;
 				if (i < 0 || i >= events.size()) {
-					throwLastError("wait for pipe");
+					throwLastError("WaitForMultipleObjects [pipes]");
 				}
 
 				if (i < activeRedirections().size()) {
@@ -503,11 +516,12 @@ namespace {
 				case WAIT_TIMEOUT:
 					break;
 				default:
-					throwLastError("test event");
+					throwLastError("WaitForSingleObject [event]");
 				}
 
 				// cancel any pending io if we need to exit
 				if (should_exit) {
+					Log::info() << "Redirection shutdown signaled";
 					for (const auto &rd : activeRedirections()) {
 						rd->cancel();
 					}
@@ -525,17 +539,17 @@ namespace {
 			freopen("CONOUT$", "w", stdout);
 			freopen("CONOUT$", "w", stderr);
 			// report error
-			fprintf(stderr, "%s\n", e.what());
+			Log::error() << e.what();
 			return;
 		}
 	}
 
 	void stdIORedirectInit() {
-		//fprintf(stderr, "redirecting...\n");
+		Log::info() << "Redirection initializing...";
 		// create exit event for redirect worker
 		redirectExitEvent() = CreateEvent(nullptr, true, false, nullptr);
 		if (redirectExitEvent() == INVALID_HANDLE_VALUE) {
-			fprintf(stderr, "%s\n", win32_error(GetLastError(), "create event").what());
+			Log::error() << win32_error(GetLastError(), "CreateEvent").what();
 			return;
 		}
 		// create redirections
@@ -547,10 +561,7 @@ namespace {
 
 	void stdIORedirectTerminate() {
 		if (redirectWorker().joinable()) {
-			//fprintf(stdout, "goodbye from redirected stdout\n");
-			//fprintf(stderr, "goodbye from redirected stderr\n");
-			//fflush(stdout);
-			//fflush(stderr);
+			Log::info() << "Redirection deinitializing...";
 			// dup handles, freopen to conout$, flush pipes
 			std::vector<HANDLE> hdups;
 			for (const auto &rd : activeRedirections()) {
@@ -580,7 +591,7 @@ namespace {
 			for (HANDLE h : hdups) {
 				CloseHandle(h);
 			}
-			//fprintf(stderr, "redirection stopped\n");
+			Log::info() << "Redirection deinitialized";
 		}
 	}
 	
@@ -607,16 +618,21 @@ namespace {
 
 namespace gecom {
 
-	size_t TerminalInit::refcount = 0;
+	size_t TerminalInit::m_refcount = 0;
+	bool TerminalInit::m_isinit = false;
 
 	TerminalInit::TerminalInit() {
-		if (refcount++ == 0) {
+		if (m_refcount++ == 0) {
+			section_guard sec("Terminal");
 			stdIORedirectInit();
+			m_isinit = true;
 		}
 	}
 
 	TerminalInit::~TerminalInit() {
-		if (--refcount == 0) {
+		if (--m_refcount == 0) {
+			section_guard sec("Terminal");
+			m_isinit = false;
 			stdIORedirectTerminate();
 		}
 	}
@@ -625,11 +641,16 @@ namespace gecom {
 
 		int width(FILE *fp) {
 #if defined(GECOM_STDIO_REDIRECT_WIN32)
-			// stdout and stderr are redirected, try find real terminal width
-			for (const auto &r : activeRedirections()) {
-				if (r->file() == fp) {
-					return r->terminalWidth();
+			if (TerminalInit::initialized()) {
+				// stdout and stderr are redirected, try find real terminal width
+				for (const auto &r : activeRedirections()) {
+					if (r->file() == fp) {
+						return r->terminalWidth();
+					}
 				}
+			} else {
+				// use file directly
+				return terminalWidthByHandle(HANDLE(_get_osfhandle(_fileno(fp))));
 			}
 			// not a terminal
 			return INT_MAX;

@@ -12,6 +12,9 @@
 #include <string>
 #include <exception>
 
+// static init dependency
+#include "Section.hpp"
+
 #ifdef _WIN32
 #define GECOM_PLATFORM_WIN32
 #define WIN32_LEAN_AND_MEAN
