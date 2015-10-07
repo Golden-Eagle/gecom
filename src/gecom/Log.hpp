@@ -12,10 +12,10 @@
 #include <stdexcept>
 #include <utility>
 
-// we only include this to ensure stdio redirection is initialized before log usage
+// static init dependency
 #include "Terminal.hpp"
 
-// we only include this to ensure sections are initialized before log usage
+// static init dependency
 #include "Section.hpp"
 
 namespace gecom {

@@ -53,7 +53,7 @@
 #include "Uncopyable.hpp"
 #include "GL.hpp"
 
-// we only include this to ensure the log is initialized before shader usage
+// static init dependency
 #include "Log.hpp"
 
 namespace gecom {
