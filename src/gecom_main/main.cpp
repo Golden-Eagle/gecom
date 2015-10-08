@@ -4,6 +4,7 @@
 #include <thread>
 #include <chrono>
 #include <iostream>
+#include <fstream>
 
 #include <gecom/Terminal.hpp>
 #include <gecom/Window.hpp>
@@ -20,7 +21,10 @@ int main() {
 
 	Log::info().verbosity(0) << "Starting...";
 
-
+	{
+		ofstream ofs("☺.txt");
+		ofs << "hello world!" << endl;
+	}
 
 	gecom::Window *win = createWindow().title("Hello World").size(640, 480).contextVersion(4, 1).visible(true);
 

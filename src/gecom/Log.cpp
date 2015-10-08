@@ -32,7 +32,9 @@
 #include <cstdio>
 #include <climits>
 #include <thread>
+#include <mutex>
 #include <sstream>
+#include <unordered_set>
 
 #include "Log.hpp"
 #include "Terminal.hpp"

@@ -208,9 +208,9 @@ namespace {
 			ImageDirectoryEntryToData(hmod, true, IMAGE_DIRECTORY_ENTRY_IMPORT, &entrysize)
 		);
 		// not all modules have an import section
+		char modfilename[MAX_PATH];
+		GetModuleFileNameA(hmod, modfilename, MAX_PATH);
 		if (!importdesc) {
-			char modfilename[MAX_PATH];
-			GetModuleFileNameA(hmod, modfilename, MAX_PATH);
 			//Log::warning() << "failed to get import descriptors for " << modfilename;
 			return nullptr;
 		}
@@ -231,6 +231,7 @@ namespace {
 					auto impprocdata = reinterpret_rva_cast<PIMAGE_IMPORT_BY_NAME>(hmod, name_thunk->u1.AddressOfData);
 					if (procname == static_cast<const char *>(impprocdata->Name)) {
 						// gotcha!
+						Log::info() << "found " << procname << " in " << modfilename;
 						SetLastError(NOERROR);
 						return reinterpret_cast<const void **>(&proc_thunk->u1.Function);
 					}
@@ -287,6 +288,73 @@ namespace {
 		}
 
 		return hmod;
+	}
+
+	decltype(&CreateFileA) old_create_file_a = nullptr;
+
+	// CreateFileA replacement that decodes the filename from UTF8 and calls CreateFileW (therefore supports \\?\ syntax)
+	HANDLE __stdcall createFileAHook(
+		LPCSTR lpFileName,
+		DWORD dwDesiredAccess,
+		DWORD dwShareMode,
+		LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+		DWORD dwCreationDisposition,
+		DWORD dwFlagsAndAttributes,
+		HANDLE hTemplateFile
+	) {
+		Log::info() << "CreateFileA: " << lpFileName;
+
+		// convert utf8 to utf16
+		// TODO what units is strlen counting in? bytes? code points? utf16 equiv?
+		size_t mbsize = strlen(lpFileName);
+		std::wstring wfilename(mbsize + 1, L'\0');
+		if (!MultiByteToWideChar(
+			CP_UTF8,
+			MB_ERR_INVALID_CHARS,
+			lpFileName,
+			-1,
+			&wfilename[0],
+			wfilename.size()
+		)) {
+			return INVALID_HANDLE_VALUE;
+		}
+		// open file
+		return CreateFileW(
+			wfilename.c_str(),
+			dwDesiredAccess,
+			dwShareMode,
+			lpSecurityAttributes,
+			dwCreationDisposition,
+			dwFlagsAndAttributes,
+			hTemplateFile
+		);
+	}
+
+	decltype(&CreateFileW) old_create_file_w = nullptr;
+
+	HANDLE __stdcall createFileWHook(
+		LPCWSTR lpFileName,
+		DWORD dwDesiredAccess,
+		DWORD dwShareMode,
+		LPSECURITY_ATTRIBUTES lpSecurityAttributes,
+		DWORD dwCreationDisposition,
+		DWORD dwFlagsAndAttributes,
+		HANDLE hTemplateFile
+	) {
+		char buf[1024];
+		if (!WideCharToMultiByte(CP_ACP, 0, lpFileName, -1, buf, 1024, "?", nullptr)) {
+			Log::error() << win32_error(GetLastError()).what();
+		}
+		Log::info() << "CreateFileW: " << buf;
+		return old_create_file_w(
+			lpFileName,
+			dwDesiredAccess,
+			dwShareMode,
+			lpSecurityAttributes,
+			dwCreationDisposition,
+			dwFlagsAndAttributes,
+			hTemplateFile
+		);
 	}
 
 }
@@ -416,13 +484,18 @@ namespace gecom {
 	}
 
 	void onPlatformInit() {
+		section_guard sec("Platform");
 		try {
 			// test...
 			hookImportedProc("kernel32.dll", "LoadLibraryA", loadLibraryAHook, &old_load_library_a);
 			hookImportedProc("kernel32.dll", "LoadLibraryExA", loadLibraryExAHook, &old_load_library_exa);
 
+			hookImportedProc("kernel32.dll", "CreateFileA", createFileAHook, &old_create_file_a);
+			hookImportedProc("kernel32.dll", "CreateFileW", createFileWHook, &old_create_file_w);
+			
+
 		} catch (std::exception &e) {
-			std::cerr << e.what() << std::endl;
+			Log::error() << e.what();
 		}
 	}
 
