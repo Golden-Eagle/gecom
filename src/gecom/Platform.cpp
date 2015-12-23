@@ -166,9 +166,9 @@ namespace {
 			ImageDirectoryEntryToData(hmod, true, IMAGE_DIRECTORY_ENTRY_EXPORT, &entrysize)
 		);
 		// not all modules have an export section
+		char modfilename[MAX_PATH];
+		GetModuleFileNameA(hmod, modfilename, MAX_PATH);
 		if (!exportdir) {
-			char modfilename[MAX_PATH];
-			GetModuleFileNameA(hmod, modfilename, MAX_PATH);
 			//Log::warning() << "failed to get export table for " << modfilename;
 			return nullptr;
 		}
@@ -231,7 +231,7 @@ namespace {
 					auto impprocdata = reinterpret_rva_cast<PIMAGE_IMPORT_BY_NAME>(hmod, name_thunk->u1.AddressOfData);
 					if (procname == static_cast<const char *>(impprocdata->Name)) {
 						// gotcha!
-						Log::info() << "found " << procname << " in " << modfilename;
+						//Log::info() << "found " << impmodname << '/' << procname << " in " << modfilename;
 						SetLastError(NOERROR);
 						return reinterpret_cast<const void **>(&proc_thunk->u1.Function);
 					}
@@ -302,7 +302,7 @@ namespace {
 		DWORD dwFlagsAndAttributes,
 		HANDLE hTemplateFile
 	) {
-		Log::info() << "CreateFileA: " << lpFileName;
+		//Log::info() << "CreateFileA: " << lpFileName;
 
 		// convert utf8 to utf16
 		// TODO what units is strlen counting in? bytes? code points? utf16 equiv?
@@ -343,9 +343,9 @@ namespace {
 	) {
 		char buf[1024];
 		if (!WideCharToMultiByte(CP_ACP, 0, lpFileName, -1, buf, 1024, "?", nullptr)) {
-			Log::error() << win32_error(GetLastError()).what();
+			//Log::error() << win32_error(GetLastError()).what();
 		}
-		Log::info() << "CreateFileW: " << buf;
+		//Log::info() << "CreateFileW: " << buf;
 		return old_create_file_w(
 			lpFileName,
 			dwDesiredAccess,
@@ -425,7 +425,7 @@ namespace gecom {
 				// if exported proc address not ours, try cmpexchg
 				if (oldexpproc != newproc) {
 					// store old proc address
-					*oldproc = oldexpproc;
+					if (oldproc) *oldproc = oldexpproc;
 					// calculate new RVA
 					ptrdiff_t newexprva = reinterpret_cast<const unsigned char *>(newproc) -
 						reinterpret_cast<const unsigned char *>(HMODULE(expmod.nativeHandle()));
@@ -485,18 +485,25 @@ namespace gecom {
 
 	void onPlatformInit() {
 		section_guard sec("Platform");
-		try {
-			// test...
-			hookImportedProc("kernel32.dll", "LoadLibraryA", loadLibraryAHook, &old_load_library_a);
-			hookImportedProc("kernel32.dll", "LoadLibraryExA", loadLibraryExAHook, &old_load_library_exa);
 
-			hookImportedProc("kernel32.dll", "CreateFileA", createFileAHook, &old_create_file_a);
-			hookImportedProc("kernel32.dll", "CreateFileW", createFileWHook, &old_create_file_w);
-			
+		try {
+			// these are win7+
+			// - they are imported into kernel32.dll
+			// - they are used directly by the likes of msvcrt.dll
+			hookImportedProc("API-MS-Win-Core-LibraryLoader-L1-1-0.dll", "LoadLibraryA", loadLibraryAHook, &old_load_library_a);
+			hookImportedProc("API-MS-Win-Core-LibraryLoader-L1-1-0.dll", "LoadLibraryExA", loadLibraryExAHook, &old_load_library_exa);
+			hookImportedProc("API-MS-Win-Core-File-L1-1-0.dll", "CreateFileA", createFileAHook, &old_create_file_a);
+			hookImportedProc("API-MS-Win-Core-File-L1-1-0.dll", "CreateFileW", createFileWHook, &old_create_file_w);
+
+			hookImportedProc("kernel32.dll", "LoadLibraryA", loadLibraryAHook, nullptr);
+			hookImportedProc("kernel32.dll", "LoadLibraryExA", loadLibraryExAHook, nullptr);
+			hookImportedProc("kernel32.dll", "CreateFileA", createFileAHook, nullptr);
+			hookImportedProc("kernel32.dll", "CreateFileW", createFileWHook, nullptr);
 
 		} catch (std::exception &e) {
 			Log::error() << e.what();
 		}
+
 	}
 
 	void onPlatformTerminate() {
